@@ -63,14 +63,21 @@
   const NUMEROS = ["cantidad", "recibido", "pendiente", "cancelada", "precio_unitario", "total", "sin_orden", "dias_desde_orden", "dias_atraso"];
   const numeros = filas => filas.map(f => { NUMEROS.forEach(k => { if (f[k] != null) f[k] = Number(f[k]); }); return f; });
 
+  // ---------- Caché (js/cache.js) ----------
+  // Lo leído se guarda por usuario en el navegador; los cambios descartan o parchan lo que corresponde.
+  const uidActual = async () => { const s = await auth.sesion(); return s ? s.user.id : null; };
+  const cacheado = async (clave, cargar, opciones) => { const u = await uidActual(); return u ? R.cache.conCache(u, clave, cargar, opciones) : cargar(); };
+  const invalidar = async claves => { const u = await uidActual(); if (u) R.cache.invalidar(u, claves); };
+  const parchar = async (clave, fn) => { const u = await uidActual(); if (u) await R.cache.parchar(u, clave, fn); };
+
   // ---------- Sesión ----------
   const auth = {
     async ingresar(usuario, password) {
       chequear(await sb.auth.signInWithPassword({ email: R.util.aEmail(usuario), password }));
     },
-    async salir() { await sb.auth.signOut(); },
+    async salir() { await sb.auth.signOut(); await R.cache.limpiarTodo(); }, // no queda nada guardado de nadie
     async sesion() { const { data } = await sb.auth.getSession(); return data.session; },
-    alCambiar(cb) { sb.auth.onAuthStateChange((evento, sesion) => cb(evento, sesion)); },
+    alCambiar(cb) { sb.auth.onAuthStateChange((evento, sesion) => { if (evento === "SIGNED_OUT") R.cache.limpiarTodo(); cb(evento, sesion); }); },
     async miPerfil() {
       const s = await auth.sesion();
       if (!s) return null;
@@ -83,39 +90,43 @@
   const documentos = {
     async cargar(doc, confirmar) {
       const fn = doc.tipo === "orden_compra" ? "cargar_orden_compra" : "cargar_remito";
-      return chequear(await sb.rpc(fn, { p_doc: doc, p_confirmar: !!confirmar }));
+      const r = chequear(await sb.rpc(fn, { p_doc: doc, p_confirmar: !!confirmar }));
+      if (confirmar) await invalidar();
+      return r;
     },
   };
 
   // ---------- Consultas ----------
   const vistas = {
-    pendientes: () => todo(() => sb.from("v_pendientes").select("*").order("fecha_orden").order("orden").order("renglon")).then(numeros),
-    lineas: () => todo(() => sb.from("v_oc_lineas").select("*").order("fecha_orden", { ascending: false }).order("orden").order("renglon")).then(numeros),
-    planilla: () => todo(() => sb.from("v_planilla").select("*").order("fecha_orden", { ascending: false }).order("orden").order("padre").order("es_variante").order("codigo")).then(numeros),
-    sobrantes: () => todo(() => sb.from("v_sobrantes").select("*").order("fecha", { ascending: false })).then(numeros),
+    // opciones.alActualizar(datos): la pantalla se abre con lo guardado y se avisa si llegan datos más nuevos
+    pendientes: opciones => cacheado("pendientes", () => todo(() => sb.from("v_pendientes").select("*").order("fecha_orden").order("orden").order("renglon")).then(numeros), opciones),
+    lineas: opciones => cacheado("lineas", () => todo(() => sb.from("v_oc_lineas").select("*").order("fecha_orden", { ascending: false }).order("orden").order("renglon")).then(numeros), opciones),
+    planilla: opciones => cacheado("planilla", () => todo(() => sb.from("v_planilla").select("*").order("fecha_orden", { ascending: false }).order("orden").order("padre").order("es_variante").order("codigo")).then(numeros), opciones),
+    sobrantes: opciones => cacheado("sobrantes", () => todo(() => sb.from("v_sobrantes").select("*").order("fecha", { ascending: false })).then(numeros), opciones),
   };
 
   // ---------- Órdenes de compra y remitos ----------
   const ordenes = {
-    listar: () => todo(() => sb.from("ordenes_compra")
+    listar: () => cacheado("ordenes", () => todo(() => sb.from("ordenes_compra")
       .select("id, numero, fecha, proveedor_id, vencimiento, comprador, descuento_porcentaje, total, modalidad_facturacion, cerrada, motivo_cierre, observaciones, creado_en, proveedores(nombre, nombre_corto, cuit)")
-      .order("fecha", { ascending: false }).order("numero", { ascending: false })),
-    async actualizar(id, d) { chequear(await sb.from("ordenes_compra").update(d).eq("id", id)); },
-    async eliminar(id) { chequear(await sb.from("ordenes_compra").delete().eq("id", id)); },
-    async cancelarUnidades(lineaId, cancelada) { chequear(await sb.from("oc_lineas").update({ cancelada }).eq("id", lineaId)); },
+      .order("fecha", { ascending: false }).order("numero", { ascending: false }))),
+    async actualizar(id, d) { chequear(await sb.from("ordenes_compra").update(d).eq("id", id)); await invalidar(); },
+    async eliminar(id) { chequear(await sb.from("ordenes_compra").delete().eq("id", id)); await invalidar(); },
+    async cancelarUnidades(lineaId, cancelada) { chequear(await sb.from("oc_lineas").update({ cancelada }).eq("id", lineaId)); await invalidar(); },
   };
 
   const remitos = {
-    listar: () => todo(() => sb.from("remitos")
+    listar: () => cacheado("remitos", () => todo(() => sb.from("remitos")
       .select("id, numero, fecha, proveedor_id, total, creado_en, proveedores(nombre, nombre_corto, cuit), remito_lineas(cantidad)")
-      .order("fecha", { ascending: false }).order("numero", { ascending: false })),
-    async eliminar(id) { chequear(await sb.from("remitos").delete().eq("id", id)); },
+      .order("fecha", { ascending: false }).order("numero", { ascending: false }))),
+    async eliminar(id) { chequear(await sb.from("remitos").delete().eq("id", id)); await invalidar(); },
   };
 
   // ---------- Proveedores (nombre corto: Target, Bagcherry…) ----------
   const proveedores = {
-    listar: () => todo(() => sb.from("proveedores").select("id, cuit, nombre, nombre_corto").order("nombre")),
-    async actualizar(id, d) { chequear(await sb.from("proveedores").update({ nombre_corto: String(d.nombre_corto || "").trim() }).eq("id", id)); },
+    listar: () => cacheado("proveedores", () => todo(() => sb.from("proveedores").select("id, cuit, nombre, nombre_corto").order("nombre"))),
+    // El nombre corto se ve en todas las pantallas: se descarta todo lo guardado
+    async actualizar(id, d) { chequear(await sb.from("proveedores").update({ nombre_corto: String(d.nombre_corto || "").trim() }).eq("id", id)); await invalidar(); },
   };
 
   // ---------- Artículos (datos web) ----------
@@ -135,13 +146,18 @@
   const articulos = {
     // Un update sin permiso no da error en Supabase (RLS): cambia 0 filas. Por eso se cuentan.
     async actualizar(codigo, d) {
-      const hechas = chequear(await sb.from("articulos").update(limpiarArticulo(d)).eq("codigo", codigo).select("codigo, fecha_alta_web"));
+      const datos = limpiarArticulo(d);
+      const hechas = chequear(await sb.from("articulos").update(datos).eq("codigo", codigo).select("codigo, fecha_alta_web"));
       if (!hechas.length) throw new Error("No se guardó: no tenés permiso o el artículo ya no existe.");
+      // La planilla guardada se parcha en el lugar (no hace falta pedirla entera de nuevo)
+      parchar("planilla", fs => fs.forEach(f => { if (f.codigo === codigo) Object.assign(f, datos, { fecha_alta_web: hechas[0].fecha_alta_web }); }));
       return hechas[0]; // la base puede completar la fecha de alta sola
     },
     // Crea las variantes (padre-SUFIJO) con los colores elegidos
     async crearVariantes(padre, colorIds) {
-      return chequear(await sb.rpc("crear_variantes", { p_padre: padre, p_colores: colorIds }));
+      const r = chequear(await sb.rpc("crear_variantes", { p_padre: padre, p_colores: colorIds }));
+      await invalidar(["planilla"]);
+      return r;
     },
     // Marcar o desmarcar una casilla en varios artículos juntos (de a 200 códigos por pedido)
     async actualizarVarios(codigos, d) {
@@ -150,6 +166,7 @@
         const lote = codigos.slice(i, i + 200);
         const hechas = chequear(await sb.from("articulos").update(datos).in("codigo", lote).select("codigo, fecha_alta_web"));
         todas.push(...hechas);
+        parchar("planilla", fs => { const porCodigo = new Map(hechas.map(h => [h.codigo, h])); fs.forEach(f => { const h = porCodigo.get(f.codigo); if (h) Object.assign(f, datos, { fecha_alta_web: h.fecha_alta_web }); }); });
         if (hechas.length < lote.length) throw new Error(`Se guardaron ${i + hechas.length} de ${codigos.length}: no tenés permiso o algún artículo ya no existe.`);
       }
       return todas;
@@ -158,22 +175,27 @@
 
   // ---------- Colores (catálogo para las variantes) ----------
   const colores = {
-    listar: () => todo(() => sb.from("colores").select("id, codigo, nombre, activo").order("nombre")),
+    listar: () => cacheado("colores", () => todo(() => sb.from("colores").select("id, codigo, nombre, activo").order("nombre"))),
     async crear(codigo, nombre) {
-      return chequear(await sb.from("colores").insert({ codigo: String(codigo).trim().toUpperCase(), nombre: String(nombre).trim() }).select("id, codigo, nombre, activo").single());
+      const r = chequear(await sb.from("colores").insert({ codigo: String(codigo).trim().toUpperCase(), nombre: String(nombre).trim() }).select("id, codigo, nombre, activo").single());
+      await invalidar(["colores"]);
+      return r;
     },
-    async actualizar(id, d) { chequear(await sb.from("colores").update(d).eq("id", id)); },
+    // El nombre del color también se ve en la planilla
+    async actualizar(id, d) { chequear(await sb.from("colores").update(d).eq("id", id)); await invalidar(["colores", "planilla"]); },
   };
 
   // ---------- Preferencias del usuario (columnas ocultas) ----------
   const preferencias = {
-    async obtener() {
+    // Solo las cambia este usuario: se guarda sin vencimiento y se actualiza al guardar
+    obtener: () => cacheado("preferencias", async () => {
       const f = chequear(await sb.from("preferencias").select("columnas_ocultas").maybeSingle());
       return f ? f.columnas_ocultas : null;
-    },
+    }, { siempreFresco: true }),
     async guardar(columnasOcultas) {
       const s = await auth.sesion();
       chequear(await sb.from("preferencias").upsert({ usuario_id: s.user.id, columnas_ocultas: columnasOcultas, actualizado_en: new Date().toISOString() }));
+      R.cache.poner(s.user.id, "preferencias", columnasOcultas);
     },
   };
 
@@ -217,6 +239,8 @@
           if (!datos) continue;
           const res = JSON.parse(datos);
           resultados.push(res);
+          // La función ya guardó el resultado en la base: se refleja en la planilla guardada
+          if (res.estado !== "error") parchar("planilla", fs => fs.forEach(f => { if (f.codigo === res.codigo) Object.assign(f, { web_estado: res.estado, web_url: res.url, web_nombre: res.nombre, web_revisado_en: new Date().toISOString() }); }));
           if (alResultado) alResultado(res);
         }
       }
@@ -238,9 +262,13 @@
     async enviar(doc) {
       const { data, error } = await sb.rpc("importar_planilla", { p_doc: doc });
       if (error) throw new Error(mensaje(error));
+      await invalidar();
       return data;
     },
   };
+
+  // El botón "Actualizar" de la barra: descarta todo lo guardado y se vuelve a pedir
+  const cache = { vaciar: () => R.cache.limpiarTodo() };
 
   // ---------- Usuarios (Edge Function, solo admin) ----------
   const usuarios = {
@@ -265,5 +293,5 @@
     resetearPassword: (id, password) => usuarios.llamar("resetear_password", { id, password }),
   };
 
-  R.api = { configurado, iniciar, auth, documentos, vistas, ordenes, remitos, proveedores, articulos, colores, preferencias, usuarios, web, importacion };
+  R.api = { configurado, iniciar, auth, documentos, vistas, ordenes, remitos, proveedores, articulos, colores, preferencias, usuarios, web, importacion, cache };
 })(window.COMPRAS);

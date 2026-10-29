@@ -21,3 +21,14 @@ RewriteRule "^(supabase|pruebas|datos-privados|node_modules)(/|$)" - [R=404,L]
   Header set X-Frame-Options "DENY"
   Header set Referrer-Policy "same-origin"
 </IfModule>
+
+# 4) Caché del navegador: los .js y .css llevan ?v=AAAAMMDD.N en index.html, así que se guardan un mes
+#    y al subir una versión nueva (otro ?v=) se bajan solos. El index.html se revalida siempre.
+<IfModule mod_headers.c>
+  <FilesMatch "\.(js|css)$">
+    Header set Cache-Control "public, max-age=2592000, immutable"
+  </FilesMatch>
+  <FilesMatch "\.html$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>

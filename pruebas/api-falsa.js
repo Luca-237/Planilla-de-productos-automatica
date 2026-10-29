@@ -288,6 +288,7 @@
                  recibidas: ords.reduce((n, o) => n + o.lineas.filter(l => l.llego).length, 0), proveedores_nuevos: 0 };
       },
     },
+    cache: { vaciar: async () => {} },
     preferencias: { obtener: () => espera(ocultas), guardar: async c => { ocultas = c; } },
     usuarios: {
       listar: () => espera(usuarios),

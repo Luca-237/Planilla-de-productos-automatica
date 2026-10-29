@@ -75,6 +75,19 @@ Sección **Importar planilla** del menú. Sube el **.xlsx** de la planilla "Proc
 - **Fuera del repo:** la planilla descargada va a `datos-privados/` (no se sube a GitHub).
 - Pruebas: `pruebas/importador.test.js` (lector) y la prueba de `importar_planilla` en `pruebas/base.test.mjs`.
 
+### Caché en el navegador (para no consultar lo mismo a cada rato)
+`js/cache.js`, usado solo desde `js/api.js` (las pantallas no saben que existe, salvo que pasan `alActualizar`). Estrategia **stale-while-revalidate**:
+- **Dónde se guarda:** memoria (la pestaña), **localStorage** para lo chico (proveedores, colores, preferencias de columnas) e **IndexedDB** para lo grande (planilla, pendientes, órdenes, remitos…): localStorage tiene ~5 MB y la planilla con miles de filas no entra. Si el navegador no deja guardar (ventana privada, sin espacio), sigue solo con la memoria.
+- **Tiempo fresco (60 s):** si lo guardado tiene menos de 60 segundos, no se consulta nada. Se cambia en `js/config.js` → `cache.frescoSegundos`.
+- **Pasado ese tiempo:** Pendientes y Planilla muestran **al instante** lo guardado y lo **renuevan por atrás**; si llegó algo distinto, se redibujan (la planilla no se toca mientras se escribe una descripción o se revisa en la web). El resto de las pantallas vuelve a consultar. Lo guardado vale hasta 7 días (`cache.maxHoras`); más viejo no se muestra.
+- **Por usuario:** cada usuario tiene su propia caché y **al salir se borra todo**. Las preferencias de columnas no vencen (solo las cambia el usuario y se actualizan al guardar).
+- **Al guardar un cambio:** las casillas, descripciones, variantes y resultados de "Revisar en la web" **parchan la planilla guardada en el lugar** (no hace falta pedirla entera de nuevo). Cambios en órdenes, remitos, proveedores, colores, carga de documentos e importación **descartan** lo guardado que depende de ellos. Una lectura que arrancó antes de un cambio no pisa lo guardado con datos viejos.
+- **Botón "Actualizar"** (flechas circulares, en la barra de arriba): descarta todo lo guardado y vuelve a pedir lo de la pantalla abierta.
+- **Qué no se guarda:** el perfil/rol del usuario, la lista de artículos y órdenes para importar (tiene que ser siempre la real) y nada de la revisión web en curso.
+- **Medido (4.043 filas de la planilla):** primera carga ~7 s; con la caché, ~0,4 s y sin pedidos a la base.
+- **Caché del navegador para los archivos** (`.htaccess`): los `.js` y `.css` se guardan 30 días (llevan `?v=` en `index.html`, así que al subir otra versión se bajan solos; **hay que subir el `?v=` en cada cambio**) y el `index.html` se revalida siempre.
+- Pruebas: `pruebas/cache.test.js` (lógica, sobre memoria).
+
 ### Fluidez de la planilla
 - Tildar casillas, elegir filas, guardar la descripción y revisar en la web **redibujan solo las celdas que cambian**, no la tabla entera (hasta 1000 filas). Cada celda lleva `data-c` con su columna; lo hace `refrescarCeldas(codigos, claves)` en `js/vistas/planilla.js`.
 - Si el filtro **Mostrar** depende del dato que cambió, ahí sí se redibuja todo (la fila puede tener que salir). Durante la revisión en la web no: las filas no saltan mientras llegan resultados, y se reacomodan al terminar.

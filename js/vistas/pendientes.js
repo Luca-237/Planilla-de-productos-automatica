@@ -62,11 +62,19 @@
   async function mostrar() {
     $("pendientes-tabla").innerHTML = `<tbody><tr><td class="cargando">Cargando…</td></tr></tbody>`;
     try {
-      [filas, sobrantes] = await Promise.all([R.api.vistas.pendientes(), R.api.vistas.sobrantes()]);
+      // Con datos guardados se muestra enseguida; si después llegan más nuevos, se vuelve a dibujar
+      [filas, sobrantes] = await Promise.all([
+        R.api.vistas.pendientes({ alActualizar: d => { filas = d; repintar(); } }),
+        R.api.vistas.sobrantes({ alActualizar: d => { sobrantes = d; pintarSobrantes(); } }),
+      ]);
     } catch (e) {
       $("pendientes-tabla").innerHTML = `<tbody><tr><td>${esc(e.message)}</td></tr></tbody>`;
       return;
     }
+    repintar();
+  }
+
+  function repintar() {
     $("pendientes-proveedor").innerHTML = app().opcionesProveedor(filas, $("pendientes-proveedor").value);
     pintarKpis();
     pintarTabla();

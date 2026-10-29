@@ -81,6 +81,12 @@
     R.util.iniciarAyudas();
     A.iniciar({ alIngresar: entrar, alSalir: salir });
     Object.values(VISTAS).forEach(v => v().iniciar());
+    // Descarta lo guardado en el navegador y vuelve a pedir lo de la pantalla abierta
+    $("btn-actualizar").addEventListener("click", async () => {
+      await R.api.cache.vaciar();
+      app.refrescar();
+      R.util.toast("Datos actualizados desde la base.");
+    });
 
     window.addEventListener("hashchange", () => { if (R.estado.perfil) ir(); });
     // Menú: en celular se abre encima; en compu se repliega para ganar ancho (queda guardado en el navegador)

@@ -13,6 +13,9 @@ window.COMPRAS_CONFIG = {
   funcionUsuarios: "admin-usuarios",
   // A partir de cuántos días sin llegar una línea se marca en rojo
   diasAlerta: 15,
+  // Caché en el navegador: durante frescoSegundos no se consulta la base; pasado ese tiempo, las pantallas que
+  // lo permiten muestran lo guardado al instante y lo renuevan por atrás (hasta maxHoras de antigüedad)
+  cache: { frescoSegundos: 60, maxHoras: 168 },
   // "Revisar en la web": de a cuántos artículos y cuántos segundos de pausa entre un lote y el siguiente
   // (para no cargar la tienda ni la función)
   revisionWeb: { lote: 10, esperaSegundos: 5 },

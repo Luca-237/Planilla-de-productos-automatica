@@ -163,13 +163,17 @@
   async function mostrar() {
     $("planilla-tabla").innerHTML = `<tbody><tr><td class="cargando">Cargando…</td></tr></tbody>`;
     try {
-      const [datos, pref] = await Promise.all([R.api.vistas.planilla(), R.api.preferencias.obtener()]);
+      const [datos, pref] = await Promise.all([R.api.vistas.planilla({ alActualizar: actualizadas }), R.api.preferencias.obtener()]);
       filas = datos;
       ocultas = new Set(pref || OCULTAS_DE_ENTRADA);
     } catch (e) {
       $("planilla-tabla").innerHTML = `<tbody><tr><td>${esc(e.message)}</td></tr></tbody>`;
       return;
     }
+    repintarTodo();
+  }
+
+  function repintarTodo() {
     // Lo elegido que ya no existe se descarta
     const codigos = new Set(filas.map(f => f.codigo));
     [...seleccion].forEach(c => { if (!codigos.has(c)) seleccion.delete(c); });
@@ -178,6 +182,14 @@
     $("planilla-estado").innerHTML = `<option value="">Todos</option>` +
       Object.entries(ESTADOS).map(([v, t]) => `<option value="${v}" ${v === est ? "selected" : ""}>${t}</option>`).join("");
     pintar();
+  }
+
+  // La planilla se abrió con lo guardado en el navegador y llegaron datos más nuevos de la base:
+  // se cambian sin cortar lo que se está haciendo (escribiendo una descripción o revisando en la web)
+  function actualizadas(datos) {
+    if (popIndice != null || revisionWeb) return;
+    filas = datos;
+    repintarTodo();
   }
 
   // ---------- Casillas ----------
