@@ -122,6 +122,6 @@ datos-privados/                                     documentos reales (no van al
 ```
 
 ## Repositorio y publicación
-Repo git **propio y privado** (`Luca-237/ComprasCindy`, a crear). La carpeta está excluida del repo **público** de rótulos (`Desktop/Proyectos/.git/info/exclude`). Nunca subir `datos-privados/`: tiene OC con precios de proveedores (está en `.gitignore`).
+Repo git **propio y privado** (`Luca-237/Planilla-de-productos-automatica`). La carpeta está excluida del repo **público** de rótulos (`Desktop/Proyectos/.git/info/exclude`). Nunca subir `datos-privados/`: tiene OC con precios de proveedores (está en `.gitignore`).
 
-Publicación en Ferozo con GIT → Desplegar y clave de despliegue de solo lectura: ver `GUIA-DESPLIEGUE.md`. Antes de cada despliegue, subir el `?v=` de `index.html` y correr `npm test`.
+Publicación en Ferozo con GIT → Desplegar por HTTPS con un token de GitHub de solo lectura (la clave SSH de Ferozo ya está usada en otro repo privado): ver `GUIA-DESPLIEGUE.md`. Antes de cada despliegue, subir el `?v=` de `index.html` y correr `npm test`.
