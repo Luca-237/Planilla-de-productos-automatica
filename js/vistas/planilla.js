@@ -330,24 +330,43 @@
   // ---------- Revisar en la web (varios) ----------
   // Los elegidos; si no hay elegidos, todos los que se ven con los filtros. Los resultados llegan
   // de a uno (SSE) y cada fila se actualiza apenas está. De a 100 por pedido. Otro clic: detener.
-  const LOTE_WEB = 100;
+  // De a LOTE artículos y una pausa entre lotes, para no cargar la tienda ni la función (js/config.js → revisionWeb)
+  const cfgWeb = () => Object.assign({ lote: 10, esperaSegundos: 5 }, (window.COMPRAS_CONFIG || {}).revisionWeb);
   let revisionWeb = null; // AbortController de la revisión en curso
+  const pausa = (ms, senal) => new Promise(ok => {
+    const t = setTimeout(ok, ms);
+    senal.addEventListener("abort", () => { clearTimeout(t); ok(); }, { once: true });
+  });
   async function revisarEnWeb() {
     if (revisionWeb) return revisionWeb.abort();
     const codigos = seleccion.size ? [...seleccion] : [...new Set(filtradas().map(f => f.codigo))];
     if (!codigos.length) return toast("No hay artículos para revisar.", "error");
-    if (codigos.length > 300 && !confirm(`Se van a revisar ${fmtNum(codigos.length)} artículos en la web. Tarda más o menos ${Math.ceil(codigos.length / 150)} minuto(s); se puede detener cuando quieras. ¿Seguir?`)) return;
+    const { lote, esperaSegundos } = cfgWeb();
+    const minutos = Math.ceil((Math.ceil(codigos.length / lote) * (esperaSegundos + 3)) / 60);
+    if (codigos.length > 50 && !confirm(`Se van a revisar ${fmtNum(codigos.length)} artículos en la web, de a ${lote} con ${esperaSegundos} segundos entre lotes. Tarda unos ${minutos} minuto(s); se puede detener cuando quieras. ¿Seguir?`)) return;
     const control = revisionWeb = new AbortController();
     const boton = $("planilla-revisar-web"), texto = $("planilla-revisar-texto");
     boton.classList.add("detener");
     boton.title = "Detener la revisión (lo ya revisado queda guardado)";
     const cuenta = { publicado: 0, solo_variantes: 0, no_esta: 0, error: 0 };
     let hechos = 0;
-    const avance = () => { texto.textContent = `Revisando ${fmtNum(hechos)} de ${fmtNum(codigos.length)} · Detener`; };
-    avance();
+    const total = codigos.length, lotes = Math.ceil(total / lote);
+    const caja = $("planilla-progreso"), pista = $("progreso-pista"), barra = $("progreso-barra");
+    caja.hidden = false; caja.classList.remove("termino");
+    $("progreso-titulo").textContent = "Revisando en la web";
+    const avance = detalle => {
+      const pct = Math.round((hechos / total) * 100);
+      barra.style.width = pct + "%";
+      pista.setAttribute("aria-valuenow", String(pct));
+      $("progreso-cifras").textContent = `${fmtNum(hechos)} de ${fmtNum(total)} · ${pct}%`;
+      if (detalle != null) $("progreso-detalle").textContent = detalle;
+      texto.textContent = `Revisando ${fmtNum(hechos)} de ${fmtNum(total)} · Detener`;
+    };
+    avance("Empezando…");
     try {
-      for (let i = 0; i < codigos.length && !control.signal.aborted; i += LOTE_WEB) {
-        await R.api.web.revisar(codigos.slice(i, i + LOTE_WEB), {
+      for (let i = 0, n = 1; i < total && !control.signal.aborted; i += lote, n++) {
+        avance(`Lote ${n} de ${lotes}`);
+        await R.api.web.revisar(codigos.slice(i, i + lote), {
           senal: control.signal,
           alResultado: r => {
             hechos++;
@@ -356,6 +375,11 @@
             avance();
           },
         });
+        // Pausa entre lotes (con cuenta regresiva); no hay después del último
+        for (let s = esperaSegundos; s > 0 && i + lote < total && !control.signal.aborted; s--) {
+          avance(`Lote ${n} de ${lotes} listo. Siguiente en ${s} s…`);
+          await pausa(1000, control.signal);
+        }
       }
     } catch (e) {
       if (e.name !== "AbortError") toast(e.message, "error", 7000);
@@ -364,6 +388,11 @@
       boton.classList.remove("detener");
       boton.title = "Revisa si los artículos elegidos (o, si no hay elegidos, todos los que se ven) ya están publicados en la web de Cindy";
       texto.textContent = "Revisar en la web";
+      const completa = hechos >= total;
+      caja.classList.toggle("termino", completa);
+      $("progreso-titulo").textContent = completa ? "Revisión terminada" : "Revisión detenida";
+      $("progreso-detalle").textContent = completa ? "Listo: los resultados ya están en la columna \"En la web\"." : "Lo ya revisado quedó guardado.";
+      setTimeout(() => { if (!revisionWeb) caja.hidden = true; }, completa ? 6000 : 4000);
       // Con un filtro de la web en "Mostrar", recién ahora las filas se reacomodan
       if ($("planilla-falta").value.startsWith("web_")) pintar();
     }

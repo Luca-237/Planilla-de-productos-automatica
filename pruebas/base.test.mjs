@@ -331,6 +331,51 @@ test('no se puede quitar el último admin activo', async () => {
   await assert.rejects(db.query(`update public.perfiles set activo = false where id = '${U.admin}'`), /último admin/);
 });
 
+test('importar la planilla anterior: solo admin, proveedor sin CUIT, lo que llegó queda recibido, se puede repetir', async () => {
+  const doc = {
+    colores: [{ codigo: 'CAM', nombre: 'Camel' }, { codigo: 'NEG', nombre: 'Otro nombre' }],
+    articulos: [
+      { codigo: 'IMP1', descripcion: 'ART IMP1', proveedor: 'Importado S.R.L.', tipo: 'PADRE', variantes: 'CAM', cargado_web: true, fecha_alta_web: null,
+        titulo_web: 'Título', descripcion_web: 'Descripción larga', estado_descripcion: 'PUBLICADA', foto: true },
+      { codigo: 'IMP2', descripcion: 'ART IMP2', proveedor: 'Importado S.R.L.', tipo: 'PADRE', cargado_web: true, fecha_alta_web: '2026-05-15' },
+      { codigo: 'IMP1-CAM', descripcion: 'ART IMP1 CAMEL', proveedor: 'Importado S.R.L.', tipo: 'VARIANTE', padre: 'IMP1', color: 'CAM' },
+      { codigo: 'IMP1-ZZZ', descripcion: 'sin padre ni color', proveedor: 'Importado S.R.L.', tipo: 'VARIANTE', padre: 'NOEXISTE', color: 'ZZZ' },
+    ],
+    ordenes: [{ numero: '0002-00000001', fecha: '2026-05-04', proveedor: 'IMPORTADO SRL', lineas: [
+      { codigo: 'IMP1', descripcion: 'ART IMP1', cantidad: 10, precio_unitario: 150.5, llego: true },
+      { codigo: 'IMP2', descripcion: 'ART IMP2', cantidad: 5, precio_unitario: 20, llego: false }] }],
+  };
+  const importar = (usuario, d = doc) => como(usuario, 'select public.importar_planilla($1) as r', [d]).then(f => f[0].r);
+  await assert.rejects(importar(U.carga), /Solo un admin/);
+  await assert.rejects(importar(U.consulta), /Solo un admin/);
+  await assert.rejects(como(null, "select public.importar_planilla('{}'::jsonb)"), /permission denied/);
+
+  const provAntes = (await como(U.admin, 'select count(*)::int as n from public.proveedores'))[0].n;
+  assert.deepEqual(await importar(U.admin), { colores: 1, articulos: 4, articulos_existentes: 0, ordenes: 1, ordenes_existentes: 0, lineas: 2, recibidas: 1, proveedores_nuevos: 1 });
+  // "Importado S.R.L." y "IMPORTADO SRL" son el mismo proveedor, sin CUIT
+  assert.deepEqual(await como(U.admin, "select cuit, nombre from public.proveedores where nombre = 'Importado S.R.L.'"), [{ cuit: null, nombre: 'Importado S.R.L.' }]);
+  // La fecha de alta no se inventa: la planilla no la traía y queda vacía (no "hoy")
+  const arts = await como(U.consulta, "select codigo, cargado_web, fecha_alta_web::text as f, padre_codigo, color_id from public.articulos where codigo like 'IMP%' order by codigo");
+  assert.deepEqual(arts.map(a => [a.codigo, a.cargado_web, a.f, a.padre_codigo, a.color_id != null]),
+    [['IMP1', true, null, null, false], ['IMP1-CAM', false, null, 'IMP1', true], ['IMP1-ZZZ', false, null, null, false], ['IMP2', true, '2026-05-15', null, false]]);
+  // Lo que llegó queda recibido (remito PLANILLA-…); lo demás, pendiente
+  assert.deepEqual((await estadoLineas('0002-00000001')).map(l => [l.codigo, l.recibido, l.pendiente, l.estado]),
+    [['IMP1', 10, 0, 'completa'], ['IMP2', 0, 5, 'pendiente']]);
+  assert.equal((await como(U.consulta, "select count(*)::int as n from public.remitos where numero = 'PLANILLA-0002-00000001'"))[0].n, 1);
+  assert.equal((await como(U.consulta, "select precio_unitario::float8 as p from public.v_oc_lineas where orden = '0002-00000001' and codigo = 'IMP1'"))[0].p, 150.5);
+
+  // Repetirla no duplica nada ni pisa lo que ya se trabajó
+  await como(U.carga, "update public.articulos set foto = false where codigo = 'IMP1'");
+  assert.deepEqual(await importar(U.admin), { colores: 0, articulos: 0, articulos_existentes: 4, ordenes: 0, ordenes_existentes: 1, lineas: 0, recibidas: 0, proveedores_nuevos: 0 });
+  assert.equal((await como(U.consulta, "select foto from public.articulos where codigo = 'IMP1'"))[0].foto, false);
+
+  // Cuando llega una OC de Manager de ese proveedor, se completa el CUIT en vez de duplicarlo
+  const orden = { ...oc('0002-00000002', '2026-06-01', [['IMP2', 3]]), cuit: '30888888880', proveedor: 'Importado SRL' };
+  await cargarOC(orden);
+  assert.deepEqual(await como(U.admin, "select cuit from public.proveedores where nombre = 'Importado S.R.L.'"), [{ cuit: '30888888880' }]);
+  assert.equal((await como(U.admin, 'select count(*)::int as n from public.proveedores'))[0].n, provAntes + 1);
+});
+
 test('las migraciones se pueden volver a correr sin perder datos', async () => {
   const contar = () => db.query('select (select count(*) from public.ordenes_compra)::int as oc, (select count(*) from public.recepciones)::int as rec').then(r => r.rows[0]);
   const antes = await contar();

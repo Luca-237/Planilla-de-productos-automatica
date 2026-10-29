@@ -2,7 +2,7 @@
 
 Proyecto **nuevo y separado** de rótulos y de RRHH: las cuentas y los datos de compras no se mezclan con nada más.
 
-> **Estado (29/10/2026): hecho.** Proyecto `compras-cindy` (`bghjltwkkxnxjypuuvnu`, us-west-2), las 6 migraciones aplicadas, registro apagado, funciones `admin-usuarios` y `buscar-en-web` publicadas y Luca como admin. Esta guía queda para rehacerlo o para un proyecto nuevo.
+> **Estado (29/10/2026): hecho.** Proyecto `compras-cindy` (`bghjltwkkxnxjypuuvnu`, us-west-2), las 7 migraciones aplicadas, registro apagado, funciones `admin-usuarios` y `buscar-en-web` publicadas y Luca como admin. Esta guía queda para rehacerlo o para un proyecto nuevo.
 
 > **Nunca pegues en el chat, en el vault ni en el código** la contraseña de la base ni la clave `secret` / `service_role`. Van al gestor de contraseñas.
 
@@ -26,6 +26,7 @@ Proyecto **nuevo y separado** de rótulos y de RRHH: las cuentas y los datos de 
 4. `20261029160000_variantes_colores.sql` (variantes por color, catálogo de colores y fecha de alta automática)
 5. `20261029180000_revision_web.sql` (resultado de la revisión en la web y permisos por columna)
 6. `20261029200000_permisos_clave_servicio.sql` (permisos de la clave de servicio: sin esto las funciones responden 403)
+7. `20261029220000_importar_planilla.sql` (carga masiva de la planilla anterior; proveedores sin CUIT provisorio)
 
 Pegar el contenido **completo** → **Run**. Supabase avisa "Potential issue detected… destructive operations": es por los `drop … if exists` y `revoke`, que hacen que el script se pueda volver a correr. Confirmar con **Run query**. Tiene que decir **Success. No rows returned**.
 

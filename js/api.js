@@ -45,12 +45,17 @@
   }
 
   // Trae todas las filas (Supabase devuelve de a 1000)
+  // Las páginas se piden de a PARALELAS a la vez: con miles de filas, una por una tardaba varios segundos
   async function todo(consulta) {
-    const filas = [], LOTE = 1000;
-    for (let desde = 0; ; desde += LOTE) {
-      const lote = chequear(await consulta().range(desde, desde + LOTE - 1));
-      filas.push(...lote);
-      if (lote.length < LOTE) return filas;
+    const filas = [], LOTE = 1000, PARALELAS = 4;
+    for (let desde = 0; ; desde += LOTE * PARALELAS) {
+      const paginas = await Promise.all(Array.from({ length: PARALELAS }, (_, i) =>
+        consulta().range(desde + i * LOTE, desde + (i + 1) * LOTE - 1)));
+      for (const p of paginas) {
+        const lote = chequear(p);
+        filas.push(...lote);
+        if (lote.length < LOTE) return filas;
+      }
     }
   }
 
@@ -219,6 +224,24 @@
     },
   };
 
+  // ---------- Importar la planilla anterior (solo admin) ----------
+  const importacion = {
+    // Lo que ya está en la base, para no repetirlo
+    async existentes() {
+      const [arts, ords] = await Promise.all([
+        todo(() => sb.from("articulos").select("codigo").order("codigo")),
+        todo(() => sb.from("ordenes_compra").select("numero").order("numero")),
+      ]);
+      return { codigos: new Set(arts.map(a => a.codigo)), ordenes: new Set(ords.map(o => o.numero)) };
+    },
+    // Un lote: { colores, articulos, ordenes }
+    async enviar(doc) {
+      const { data, error } = await sb.rpc("importar_planilla", { p_doc: doc });
+      if (error) throw new Error(mensaje(error));
+      return data;
+    },
+  };
+
   // ---------- Usuarios (Edge Function, solo admin) ----------
   const usuarios = {
     async llamar(accion, datos = {}) {
@@ -242,5 +265,5 @@
     resetearPassword: (id, password) => usuarios.llamar("resetear_password", { id, password }),
   };
 
-  R.api = { configurado, iniciar, auth, documentos, vistas, ordenes, remitos, proveedores, articulos, colores, preferencias, usuarios, web };
+  R.api = { configurado, iniciar, auth, documentos, vistas, ordenes, remitos, proveedores, articulos, colores, preferencias, usuarios, web, importacion };
 })(window.COMPRAS);

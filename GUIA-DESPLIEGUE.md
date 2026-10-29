@@ -81,7 +81,7 @@ Supabase → **Authentication → URL Configuration → Site URL** → `https://
 ---
 
 ## Cada vez que se cambie algo
-1. Subir el número `?v=` en **todas** las líneas de `index.html` (si no, el navegador usa la versión vieja guardada). Hoy es `20261029.9`.
+1. Subir el número `?v=` en **todas** las líneas de `index.html` (si no, el navegador usa la versión vieja guardada). Hoy es `20261029.11`.
 2. `npm test` (tienen que pasar todas).
 3. Si hay una migración nueva en `supabase/migrations/`, correrla en Supabase **antes** de desplegar (SQL Editor, en orden).
 4. `git commit` + `git push`.

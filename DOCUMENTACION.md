@@ -50,7 +50,7 @@ Para no cargar algo dos veces, la planilla revisa si cada artículo **ya está p
   - **No está**. Si además estaba tildado "Cargado web", dice **"No está (estaba cargado)"**: se bajó de la página.
   - **Sin revisar**: todavía no se revisó.
 - **Cómo se revisa:**
-  - Botón **Revisar en la web** (admin y carga): revisa los artículos **elegidos** o, si no hay elegidos, **todos los que se ven** con los filtros. Cada fila se actualiza **apenas se revisa** (la función manda los resultados de a uno por **SSE**, de a 100 códigos por pedido y 4 en paralelo). Mientras revisa, el mismo botón dice **Detener**: corta y lo ya revisado queda guardado. Al final, un resumen.
+  - Botón **Revisar en la web** (admin y carga): revisa los artículos **elegidos** o, si no hay elegidos, **todos los que se ven** con los filtros. Se revisa **de a 10 artículos, con 5 segundos de pausa entre lotes** (para no cargar la tienda ni la función; se cambia en `js/config.js` → `revisionWeb: { lote, esperaSegundos }`). Una **barra de progreso** muestra el avance, el lote en curso y la cuenta regresiva de la pausa. Dentro de cada lote la función manda los resultados de a uno por **SSE** y la fila se actualiza apenas se revisa. Mientras revisa, el mismo botón dice **Detener**: corta y lo ya revisado queda guardado. Con más de 50 artículos pide confirmación y avisa cuánto tarda. Al final, un resumen.
   - **Solo, al abrir la descripción rápida** de un artículo que nunca se revisó. Si ya está publicado, la ventanita lo avisa en verde antes de que escribas nada.
   - Filtros de **Mostrar**: "Sin revisar en la web", "Ya están en la web", "No están en la web".
 - **Si la tienda no responde**, ese código queda como estaba (no se marca "No está" por error) y el resumen lo cuenta aparte.
@@ -59,6 +59,21 @@ Para no cargar algo dos veces, la planilla revisa si cada artículo **ya está p
 - **Tienda:** hoy consulta TiendaQuick (`https://www.cindymayorista.com.ar`). Se cambia con el secreto `TIENDA_URL` de la función. **Cuando la tienda pase a Tiendanube hay que adaptar la lectura** (otra página de búsqueda, y hoy pide contraseña de acceso).
 - **Permisos de la clave de servicio** (migración 6): el proyecto se creó con "Automatically expose new tables" apagado, así que `service_role` no tenía permisos en ninguna tabla y las funciones (`buscar-en-web` y `admin-usuarios`) respondían **403** al leer `perfiles`. Ahora la función devuelve el error real de la base en vez de un 403 engañoso.
 - Pruebas: `pruebas/web.test.mjs` (lectura de la búsqueda; con `PROBAR_TIENDA=1` consulta la tienda real).
+
+### Importar la planilla anterior (carga masiva, solo admin)
+Sección **Importar planilla** del menú. Sube el **.xlsx** de la planilla "Proceso Ecommerce" (en Google Sheets: Archivo → Descargar → Microsoft Excel). Lee las hojas **"Hoja 1"** y **"Historial"** (`js/importador-planilla.js`; ubica las columnas por el texto del encabezado), muestra un resumen de lo que va a cargar y, al confirmar, lo manda a la base por lotes con **barra de progreso** (la función `importar_planilla`, migración 7). Se puede **detener y repetir**: lo que ya está cargado (artículo, color, orden) no se duplica ni se pisa.
+- **Qué se importa:**
+  - **Artículos** (uno por código): nombre, tipo, variante/color, casillas (foto, descripción OK, cargado web, catálogo, sin stock, ya no está), fecha de alta, observaciones, título, descripción web y estado de la descripción. Si un código está en varias filas, se juntan: las casillas se suman (basta que una fila diga "sí"), y sin stock / ya no está salen de la fila más nueva.
+  - **Variantes**: cuelgan de su principal (el código sin el sufijo, `131022-NEG` → `131022`), con su color si el sufijo está en el catálogo, y no llevan línea de orden (la cantidad es del principal). Las que no tienen principal en la planilla quedan como artículos sueltos con su cantidad. El principal recibe la lista de sufijos.
+  - **Colores nuevos** para el catálogo: solo los sufijos donde la planilla es clara (mismo nombre en casi todas las variantes). Los dudosos no se crean: se agregan a mano en **Colores**.
+  - **Órdenes de compra**: número, fecha, proveedor y, por línea, cantidad y precio. Las líneas con **Llegó = sí** quedan **recibidas completas**, con un remito `PLANILLA-<orden>` a la fecha de la orden (la planilla no guarda cuándo llegó). Las demás quedan pendientes y entran en Pendientes con sus días de espera.
+  - **Proveedores**: la planilla trae el nombre pero no el CUIT, así que se crean **sin CUIT** (el nombre se reconoce sin importar mayúsculas ni puntos: "S.R.L." = "SRL"). Cuando llega una OC o un remito de Manager de ese proveedor, **se le completa el CUIT solo** en vez de duplicarlo.
+- **Qué no se importa:** la columna "Variantes" de los principales (PENDIENTE FOTO, GENERADAS…), la columna "Estado" (se deduce de "Llegó"), las filas con cantidad 0 como líneas (el artículo sí entra) y los códigos de barra (la planilla no los tenía).
+- **Textos corridos:** en la planilla vieja observaciones, título, descripción y estado están a veces corridos una columna. Se clasifican por lo que son (los estados "PUBLICADA" / "LISTA - PENDIENTE PUBLICAR" van a "Estado descripción"; el texto largo o con viñetas es la descripción; el último texto corto es el título y los anteriores, observaciones).
+- **La fecha de alta no se inventa:** durante la importación el trigger de fecha automática no actúa; si la planilla no tenía fecha, queda vacía.
+- **Después de importar:** usar **Revisar en la web** en la Planilla para comprobar qué está publicado de verdad (la planilla tenía muchos "Ya no está en la página" marcados).
+- **Fuera del repo:** la planilla descargada va a `datos-privados/` (no se sube a GitHub).
+- Pruebas: `pruebas/importador.test.js` (lector) y la prueba de `importar_planilla` en `pruebas/base.test.mjs`.
 
 ### Fluidez de la planilla
 - Tildar casillas, elegir filas, guardar la descripción y revisar en la web **redibujan solo las celdas que cambian**, no la tabla entera (hasta 1000 filas). Cada celda lleva `data-c` con su columna; lo hace `refrescarCeldas(codigos, claves)` en `js/vistas/planilla.js`.

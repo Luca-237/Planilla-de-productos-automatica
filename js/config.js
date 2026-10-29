@@ -13,6 +13,9 @@ window.COMPRAS_CONFIG = {
   funcionUsuarios: "admin-usuarios",
   // A partir de cuántos días sin llegar una línea se marca en rojo
   diasAlerta: 15,
+  // "Revisar en la web": de a cuántos artículos y cuántos segundos de pausa entre un lote y el siguiente
+  // (para no cargar la tienda ni la función)
+  revisionWeb: { lote: 10, esperaSegundos: 5 },
   // Búsqueda de un artículo en la web de Cindy (botón junto a la descripción). {codigo} se reemplaza solo.
   // Cuando la tienda pase a Tiendanube: https://cindymayorista2.mitiendanube.com/search/?q={codigo}
   urlBusquedaWeb: "https://www.cindymayorista.com.ar/resultado-busqueda.htm?keywords={codigo}",

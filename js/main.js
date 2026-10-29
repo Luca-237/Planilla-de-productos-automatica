@@ -13,6 +13,7 @@
     proveedores: () => R.vistaProveedores,
     colores: () => R.vistaColores,
     usuarios: () => R.vistaUsuarios,
+    importar: () => R.vistaImportar,
   };
   let vistaActual = null;
 
@@ -34,7 +35,7 @@
 
   function ir() {
     let nombre = location.hash.replace("#", "") || "pendientes";
-    if (!VISTAS[nombre] || (nombre === "usuarios" && !app.esAdmin()) || (nombre === "cargar" && !app.puedeCargar())) nombre = "pendientes";
+    if (!VISTAS[nombre] || ((nombre === "usuarios" || nombre === "importar") && !app.esAdmin()) || (nombre === "cargar" && !app.puedeCargar())) nombre = "pendientes";
     vistaActual = nombre;
     document.querySelectorAll("[data-seccion]").forEach(s => { s.hidden = s.id !== "vista-" + nombre; });
     document.querySelectorAll(".lateral a").forEach(a => a.classList.toggle("activo", a.dataset.vista === nombre));

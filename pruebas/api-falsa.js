@@ -151,6 +151,8 @@
     { id: "u2", email: "carga.demo@compras.cindymayorista.com.ar", nombre: "Carga de prueba", rol: "carga", activo: true, soy_yo: false, ultimo_ingreso: null },
   ];
 
+  const importadosDemo = { codigos: new Set(), ordenes: new Set() };
+
   R.api = {
     configurado: () => true,
     iniciar: () => {},
@@ -269,6 +271,21 @@
           if (alResultado) alResultado(copia(r));
         }
         return salida;
+      },
+    },
+    // Imita la importación: cuenta lo que recibe y recuerda lo "cargado" (no toca los datos de la demo)
+    importacion: {
+      existentes: async () => ({ codigos: new Set([...articulos.keys(), ...importadosDemo.codigos]), ordenes: new Set(importadosDemo.ordenes) }),
+      enviar: async doc => {
+        await new Promise(ok => setTimeout(ok, 200));
+        const nuevos = (doc.articulos || []).filter(x => !importadosDemo.codigos.has(x.codigo) && !articulos.has(x.codigo));
+        nuevos.forEach(x => importadosDemo.codigos.add(x.codigo));
+        const ords = (doc.ordenes || []).filter(o => !importadosDemo.ordenes.has(o.numero));
+        ords.forEach(o => importadosDemo.ordenes.add(o.numero));
+        const lineas = ords.reduce((n, o) => n + o.lineas.length, 0);
+        return { colores: (doc.colores || []).length, articulos: nuevos.length, articulos_existentes: (doc.articulos || []).length - nuevos.length,
+                 ordenes: ords.length, ordenes_existentes: (doc.ordenes || []).length - ords.length, lineas,
+                 recibidas: ords.reduce((n, o) => n + o.lineas.filter(l => l.llego).length, 0), proveedores_nuevos: 0 };
       },
     },
     preferencias: { obtener: () => espera(ocultas), guardar: async c => { ocultas = c; } },
