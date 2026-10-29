@@ -172,6 +172,23 @@
     },
   };
 
+  // ---------- Revisión en la web (Edge Function buscar-en-web) ----------
+  // Revisa si los códigos ya están publicados en la web de Cindy y guarda el resultado en la base
+  const web = {
+    async revisar(codigos) {
+      const { data, error } = await sb.functions.invoke("buscar-en-web", { body: { codigos } });
+      if (error) {
+        let m = error.message;
+        try { const j = await error.context.json(); if (j && j.error) m = j.error; } catch (e) {}
+        if (/Failed to send a request/i.test(m)) m = 'No se pudo contactar la función "buscar-en-web". ¿Está publicada en Supabase?';
+        if (/Invalid JWT|UNAUTHORIZED/i.test(m)) m = 'La función rechazó la sesión. En Supabase → Edge Functions → buscar-en-web → desactivar "Verify JWT".';
+        throw new Error(mensaje({ message: m }));
+      }
+      if (data && data.error) throw new Error(data.error);
+      return data.resultados;
+    },
+  };
+
   // ---------- Usuarios (Edge Function, solo admin) ----------
   const usuarios = {
     async llamar(accion, datos = {}) {
@@ -195,5 +212,5 @@
     resetearPassword: (id, password) => usuarios.llamar("resetear_password", { id, password }),
   };
 
-  R.api = { configurado, iniciar, auth, documentos, vistas, ordenes, remitos, proveedores, articulos, colores, preferencias, usuarios };
+  R.api = { configurado, iniciar, auth, documentos, vistas, ordenes, remitos, proveedores, articulos, colores, preferencias, usuarios, web };
 })(window.COMPRAS);

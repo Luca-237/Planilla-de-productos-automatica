@@ -284,6 +284,24 @@ test('fecha de alta en la web: se completa sola al tildar "Cargado web" y no se 
   assert.equal((await fecha('F2')).f, '2026-05-02');
 });
 
+test('revisión web: solo la función escribe el resultado; si ya estaba publicado no se inventa la fecha de alta', async () => {
+  await cargarOC(oc('0001-00000060', '2026-10-01', [['W1', 1], ['W2', 1]]));
+  // un usuario no puede escribir el resultado de la revisión
+  await assert.rejects(como(U.carga, "update public.articulos set web_estado = 'publicado' where codigo = 'W1'"), /permission denied/);
+  await assert.rejects(como(U.admin, "update public.articulos set web_url = 'x' where codigo = 'W1'"), /permission denied/);
+  // sí sus columnas de trabajo
+  assert.equal((await como(U.carga, "update public.articulos set foto = true, descripcion_web = 'x' where codigo = 'W1' returning codigo")).length, 1);
+  // lo que escribe la función (acá, como dueño de la base)
+  await db.query("update public.articulos set web_estado = 'publicado', web_revisado_en = now(), web_url = 'https://tienda/w1', web_nombre = 'W1 WEB' where codigo = 'W1'");
+  await db.query("update public.articulos set web_estado = 'no_esta', web_revisado_en = now() where codigo = 'W2'");
+  assert.deepEqual(await como(U.consulta, "select codigo, web_estado, web_url from public.v_planilla where orden = '0001-00000060' order by codigo"),
+    [{ codigo: 'W1', web_estado: 'publicado', web_url: 'https://tienda/w1' }, { codigo: 'W2', web_estado: 'no_esta', web_url: '' }]);
+  // tildar "Cargado web": W1 ya estaba publicado (fecha real desconocida) -> queda vacía; W2 -> hoy
+  await como(U.carga, "update public.articulos set cargado_web = true where codigo in ('W1', 'W2')");
+  assert.deepEqual(await como(U.consulta, "select codigo, fecha_alta_web is null as sin_fecha from public.articulos where codigo in ('W1', 'W2') order by codigo"),
+    [{ codigo: 'W1', sin_fecha: true }, { codigo: 'W2', sin_fecha: false }]);
+});
+
 test('preferencias: cada uno guarda y ve solo las suyas', async () => {
   await como(U.carga, "insert into public.preferencias (columnas_ocultas) values ('{foto,catalogo}')");
   await como(U.consulta, "insert into public.preferencias (columnas_ocultas) values ('{precio_unitario}')");

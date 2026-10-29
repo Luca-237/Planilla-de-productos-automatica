@@ -5,3 +5,7 @@
 # (Es lo mismo que "Verify JWT with legacy secret" apagado en el panel.)
 [functions.admin-usuarios]
 verify_jwt = false
+
+# Misma razón que admin-usuarios: la función verifica la sesión y el rol por su cuenta.
+[functions.buscar-en-web]
+verify_jwt = false

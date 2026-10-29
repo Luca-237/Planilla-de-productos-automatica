@@ -19,7 +19,6 @@
   };
   const editable = () => app().puedeCargar();
   const urlWeb = codigo => String((window.COMPRAS_CONFIG || {}).urlBusquedaWeb || "").replace("{codigo}", encodeURIComponent(codigo));
-  const ICONO_BUSCAR = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>`;
   const si = v => v ? `<span class="si">Sí</span>` : `<span class="no">No</span>`;
   const casilla = campo => f => editable()
     ? `<input type="checkbox" class="tilde" data-campo="${campo}" ${f[campo] ? "checked" : ""} aria-label="${esc(TILDES[campo])} · ${esc(f.codigo)}">`
@@ -29,8 +28,22 @@
   const vistaDesc = f => f.descripcion_web
     ? `<span class="desc-vista">${esc(f.descripcion_web)}</span>`
     : (editable() ? `<span class="desc-vacia">+ Agregar descripción</span>` : "—");
-  // Si el artículo ya está en la web, un botón al lado abre la búsqueda de su código en la página de Cindy
-  const celdaDescripcion = f => `<div class="desc-fila">${vistaDesc(f)}${f.cargado_web && urlWeb(f.codigo) ? `<a class="buscar-web-mini" href="${esc(urlWeb(f.codigo))}" target="_blank" rel="noopener" title="Buscar ${esc(f.codigo)} en la web" aria-label="Buscar ${esc(f.codigo)} en la web">${ICONO_BUSCAR}</a>` : ""}</div>`;
+
+  // Resultado de la revisión en la web (lo guarda la función buscar-en-web)
+  const WEB = {
+    publicado: ["ok", "En la web"], solo_variantes: ["var", "Por variantes"], no_esta: ["no", "No está"],
+  };
+  const fechaHoraCorta = iso => iso ? new Date(iso).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+  const chipWeb = f => {
+    if (!f.web_estado) return `<span class="web-chip sin">Sin revisar</span>`;
+    const [clase, texto] = WEB[f.web_estado];
+    const titulo = `Revisado ${fechaHoraCorta(f.web_revisado_en)}${f.web_nombre ? " · " + f.web_nombre : ""}`;
+    // Estaba tildado "Cargado web" pero ya no aparece: se bajó de la página
+    if (f.web_estado === "no_esta" && f.cargado_web) return `<span class="web-chip alerta" title="${esc(titulo)}">No está (estaba cargado)</span>`;
+    return f.web_url
+      ? `<a class="web-chip ${clase}" href="${esc(f.web_url)}" target="_blank" rel="noopener" title="${esc(titulo)} · abrir en la web">${texto}</a>`
+      : `<span class="web-chip ${clase}" title="${esc(titulo)}">${texto}</span>`;
+  };
 
   // [clave, título, grupo, cómo se muestra, clase de la celda]
   const COLUMNAS = [
@@ -40,7 +53,8 @@
       : `<strong>${esc(f.codigo)}</strong>${etiquetaProveedor(f.proveedor, f.razon_social)}${f.n_variantes ? `<span class="tag-var">${f.n_variantes} ${f.n_variantes === 1 ? "variante" : "variantes"}</span>` : ""}`],
     ["nombre", "Nombre", "Compra"],
     // Descripción y casillas al lado del nombre, para no tener que desplazarse
-    ["descripcion_web", "Descripción web", "Casillas", celdaDescripcion, "celda-desc"],
+    ["web_estado", "En la web", "Casillas", chipWeb],
+    ["descripcion_web", "Descripción web", "Casillas", vistaDesc, "celda-desc"],
     ...Object.keys(TILDES).map(k => [k, TILDES[k], "Casillas", casilla(k), "num celda-tilde"]),
     ["orden", "Orden de compra", "Compra"],
     ["fecha_orden", "Fecha OC", "Compra", f => fmtFecha(f.fecha_orden)],
@@ -80,7 +94,13 @@
     const q = norm($("planilla-buscar").value), prov = $("planilla-proveedor").value, est = $("planilla-estado").value;
     const falta = $("planilla-falta").value;
     // "sin_stock" y "ya_no_esta" muestran los marcados; el resto, los que faltan
-    const pasa = f => !falta || (["sin_stock", "ya_no_esta"].includes(falta) ? !!f[falta] : !f[falta]);
+    const pasa = f => {
+      if (!falta) return true;
+      if (falta === "web_sin") return !f.web_estado;
+      if (falta === "web_si") return ["publicado", "solo_variantes"].includes(f.web_estado);
+      if (falta === "web_no") return f.web_estado === "no_esta";
+      return ["sin_stock", "ya_no_esta"].includes(falta) ? !!f[falta] : !f[falta];
+    };
     return filas.filter(f => (!prov || f.proveedor === prov) && (!est || f.estado === est) && pasa(f)
       && (!q || norm(`${f.codigo} ${f.nombre} ${f.orden} ${f.proveedor} ${f.razon_social || ""}`).includes(q)));
   }
@@ -213,8 +233,11 @@
     popIndice = i;
     popTextoOriginal = f.descripcion_web || "";
     $("pop-desc-titulo").innerHTML = `${esc(f.codigo)} · ${esc(f.nombre)}<small>${esc(f.proveedor)} · OC ${esc(f.orden)}</small>`;
-    $("pop-desc-web").hidden = !(f.cargado_web && urlWeb(f.codigo));
-    if (!$("pop-desc-web").hidden) $("pop-desc-web").href = urlWeb(f.codigo);
+    $("pop-desc-web").hidden = !(f.web_url || (f.cargado_web && urlWeb(f.codigo)));
+    if (!$("pop-desc-web").hidden) $("pop-desc-web").href = f.web_url || urlWeb(f.codigo);
+    pintarAvisoWeb(f);
+    // Antes de escribir la descripción: si nunca se revisó, se revisa ahora (para no cargarla dos veces)
+    if (!f.web_estado && editable()) revisarUno(f);
     $("pop-desc-texto").value = popTextoOriginal;
     $("pop-desc-ok").checked = true; // escribir la descripción casi siempre es dejarla lista
     document.querySelectorAll("#planilla-tabla tr.editando-desc").forEach(tr => tr.classList.remove("editando-desc"));
@@ -231,6 +254,73 @@
     popIndice = null;
     $("pop-desc").hidden = true;
     return true;
+  }
+
+  function pintarAvisoWeb(f, revisando) {
+    const el = $("pop-desc-estado");
+    el.hidden = false;
+    el.className = "pop-desc-web";
+    if (revisando) { el.textContent = "Revisando si ya está en la web…"; return; }
+    if (!f.web_estado) { el.hidden = true; return; }
+    const cuando = `(revisado ${fechaHoraCorta(f.web_revisado_en)})`;
+    if (f.web_estado === "publicado") { el.classList.add("ya"); el.textContent = `Ya está en la web ${cuando}: revisá que no sea un artículo ya cargado.`; }
+    else if (f.web_estado === "solo_variantes") { el.classList.add("ya"); el.textContent = `En la web están sus variantes ${cuando}, no el código principal.`; }
+    else el.textContent = `No está en la web ${cuando}.`;
+  }
+
+  async function revisarUno(f) {
+    pintarAvisoWeb(f, true);
+    try {
+      const [r] = await R.api.web.revisar([f.codigo]);
+      if (r.estado === "error") throw new Error(r.error);
+      aplicarWeb([r]);
+      pintar();
+    } catch (e) { toast(`No se pudo revisar en la web: ${e.message}`, "error", 6000); }
+    // La ventanita puede seguir abierta sobre otra fila: solo se actualiza si es la misma
+    const actual = popIndice != null && mostradas()[popIndice];
+    if (actual && actual.codigo === f.codigo) {
+      pintarAvisoWeb(actual);
+      $("pop-desc-web").hidden = !actual.web_url;
+      if (actual.web_url) $("pop-desc-web").href = actual.web_url;
+    }
+  }
+
+  // Pasa los resultados de la función a las filas que se ven (todas las del mismo código)
+  function aplicarWeb(resultados) {
+    const ahora = new Date().toISOString();
+    resultados.filter(r => r.estado !== "error").forEach(r => {
+      aplicarLocal([r.codigo], "web_estado", r.estado);
+      aplicarLocal([r.codigo], "web_url", r.url);
+      aplicarLocal([r.codigo], "web_nombre", r.nombre);
+      aplicarLocal([r.codigo], "web_revisado_en", ahora);
+    });
+  }
+
+  // ---------- Revisar en la web (varios) ----------
+  // Los elegidos; si no hay elegidos, todos los que se ven con los filtros. De a 40 por pedido.
+  let revisando = false;
+  async function revisarEnWeb() {
+    if (revisando) return;
+    const codigos = seleccion.size ? [...seleccion] : [...new Set(filtradas().map(f => f.codigo))];
+    if (!codigos.length) return toast("No hay artículos para revisar.", "error");
+    if (codigos.length > 120 && !confirm(`Se van a revisar ${fmtNum(codigos.length)} artículos en la web. Tarda más o menos ${Math.ceil(codigos.length / 120)} minuto(s). ¿Seguir?`)) return;
+    revisando = true;
+    const boton = $("planilla-revisar-web"), texto = $("planilla-revisar-texto");
+    boton.disabled = true;
+    const cuenta = { publicado: 0, solo_variantes: 0, no_esta: 0, error: 0 };
+    try {
+      for (let i = 0; i < codigos.length; i += 40) {
+        texto.textContent = `Revisando ${fmtNum(Math.min(i + 40, codigos.length))} de ${fmtNum(codigos.length)}…`;
+        const resultados = await R.api.web.revisar(codigos.slice(i, i + 40));
+        resultados.forEach(r => { cuenta[r.estado] = (cuenta[r.estado] || 0) + 1; });
+        aplicarWeb(resultados);
+        pintar();
+      }
+      const partes = [`${fmtNum(cuenta.publicado)} en la web`, `${fmtNum(cuenta.solo_variantes)} por variantes`, `${fmtNum(cuenta.no_esta)} no están`];
+      if (cuenta.error) partes.push(`${fmtNum(cuenta.error)} sin respuesta de la tienda (quedan como estaban)`);
+      toast(`Revisados ${fmtNum(codigos.length)}: ${partes.join(", ")}.`, cuenta.error ? "error" : "ok", 8000);
+    } catch (e) { toast(e.message, "error", 7000); }
+    finally { revisando = false; boton.disabled = false; texto.textContent = "Revisar en la web"; }
   }
 
   async function guardarPop(seguir) {
@@ -396,6 +486,7 @@
     $("ar-crear-variantes").addEventListener("click", crearVariantes);
     $("ar-nc-agregar").addEventListener("click", colorNuevo);
     $("planilla-completa").addEventListener("click", () => pantallaCompleta());
+    $("planilla-revisar-web").addEventListener("click", revisarEnWeb);
     document.addEventListener("keydown", e => {
       if (e.key === "Escape" && !e.defaultPrevented && $("vista-planilla").classList.contains("pantalla-completa") && !document.querySelector("dialog[open]")) pantallaCompleta(false);
     });

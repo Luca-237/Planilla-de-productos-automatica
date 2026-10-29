@@ -11,7 +11,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600&family=Lora:ital,wght@0,600;1,500&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%23e84e1b'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='Georgia,serif' font-size='20' fill='%23fff'%3EC%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="css/app.css?v=20261029.7">
+<link rel="stylesheet" href="css/app.css?v=20261029.8">
 </head>
 <body>
 
@@ -144,6 +144,9 @@
       <div class="vista-head">
         <div><h1>Planilla</h1><p class="sub">Una fila por artículo de cada orden de compra, con lo que llegó y los datos de la web.</p></div>
         <div class="controles">
+          <button type="button" class="btn-sec primario" id="planilla-revisar-web" data-puede-cargar hidden title="Revisa si los artículos elegidos (o, si no hay elegidos, todos los que se ven) ya están publicados en la web de Cindy">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+            <span id="planilla-revisar-texto">Revisar en la web</span></button>
           <button type="button" class="btn-sec" id="planilla-completa" title="Ocultar el menú y usar toda la pantalla para la planilla (Esc para salir)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
             <span id="planilla-completa-texto">Pantalla completa</span></button>
@@ -174,6 +177,9 @@
               <option value="catalogo">Sin catálogo</option>
               <option value="sin_stock">Marcados sin stock</option>
               <option value="ya_no_esta">Ya no están en la página</option>
+              <option value="web_sin">Sin revisar en la web</option>
+              <option value="web_si">Ya están en la web</option>
+              <option value="web_no">No están en la web</option>
             </select></div>
         </div>
         <div class="barra-seleccion" id="planilla-seleccion" hidden>
@@ -380,6 +386,7 @@
 <!-- ============ Ventanita: descripción web rápida (se abre sobre la celda) ============ -->
 <div class="pop-desc" id="pop-desc" role="dialog" aria-labelledby="pop-desc-titulo" hidden>
   <div class="pop-desc-cab"><div class="pop-desc-titulo" id="pop-desc-titulo"></div><a class="btn-sec buscar-web" id="pop-desc-web" target="_blank" rel="noopener" hidden>Buscar en la web</a></div>
+  <div class="pop-desc-web" id="pop-desc-estado" hidden></div>
   <textarea id="pop-desc-texto" rows="7" placeholder="Escribí o pegá la descripción web…"></textarea>
   <label class="check" style="margin-top:6px"><input type="checkbox" id="pop-desc-ok"> Marcar "Descripción OK"</label>
   <div class="pop-desc-pie">
@@ -395,20 +402,20 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
-<script src="js/config.js?v=20261029.7"></script>
-<script src="js/utils.js?v=20261029.7"></script>
-<script src="js/lector-manager.js?v=20261029.7"></script>
-<script src="js/api.js?v=20261029.7"></script>
+<script src="js/config.js?v=20261029.8"></script>
+<script src="js/utils.js?v=20261029.8"></script>
+<script src="js/lector-manager.js?v=20261029.8"></script>
+<script src="js/api.js?v=20261029.8"></script>
 
-<script src="js/vistas/acceso.js?v=20261029.7"></script>
-<script src="js/vistas/pendientes.js?v=20261029.7"></script>
-<script src="js/vistas/cargar.js?v=20261029.7"></script>
-<script src="js/vistas/planilla.js?v=20261029.7"></script>
-<script src="js/vistas/colores.js?v=20261029.7"></script>
-<script src="js/vistas/proveedores.js?v=20261029.7"></script>
-<script src="js/vistas/documentos.js?v=20261029.7"></script>
-<script src="js/vistas/usuarios.js?v=20261029.7"></script>
+<script src="js/vistas/acceso.js?v=20261029.8"></script>
+<script src="js/vistas/pendientes.js?v=20261029.8"></script>
+<script src="js/vistas/cargar.js?v=20261029.8"></script>
+<script src="js/vistas/planilla.js?v=20261029.8"></script>
+<script src="js/vistas/colores.js?v=20261029.8"></script>
+<script src="js/vistas/proveedores.js?v=20261029.8"></script>
+<script src="js/vistas/documentos.js?v=20261029.8"></script>
+<script src="js/vistas/usuarios.js?v=20261029.8"></script>
 
-<script src="js/main.js?v=20261029.7"></script>
+<script src="js/main.js?v=20261029.8"></script>
 </body>
 </html>

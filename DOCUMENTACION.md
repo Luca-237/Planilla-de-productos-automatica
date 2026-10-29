@@ -42,9 +42,22 @@ Al tildar **Cargado web** (en la tabla, en bloque o en el diálogo) la base comp
 - El botón de las tres rayas de la barra **repliega el menú** en compu (queda guardado en el navegador, clave `compras-lateral`); en celular lo abre encima, como antes.
 - En la Planilla, **Pantalla completa** tapa menú y barra con la tabla y, si el navegador lo permite, pasa también a pantalla completa de verdad. **Esc** sale.
 
-### Buscar en la web desde la planilla
-Junto a la descripción de un artículo que ya está **Cargado web** aparece un botón con una lupa (y otro "Buscar en la web" en la ventanita de descripción) que abre en otra pestaña la búsqueda de ese código en la página de Cindy. La dirección sale de `urlBusquedaWeb` en `js/config.js`: cuando la tienda pase a Tiendanube se cambia ahí.
-**Importante:** es un enlace, no el script automático. Buscar solo en el navegador no puede leer la página de Cindy (el navegador lo bloquea), ni confirmar que el código está, ni sacar medidas con Google Lens. Para eso hace falta un servicio aparte (por ejemplo una función de Supabase que consulte la tienda); queda como siguiente paso.
+### Revisar si ya está en la web (antes de cargar o describir)
+Para no cargar algo dos veces, la planilla revisa si cada artículo **ya está publicado en la web de Cindy**. La página no puede leer otro sitio (el navegador lo bloquea), así que lo hace la Edge Function **`buscar-en-web`**: busca el código en la tienda y guarda el resultado en el artículo.
+- **Resultado** (columna **"En la web"**, al lado de la descripción, con enlace al producto):
+  - **En la web**: aparece un producto con ese **código idéntico**. Ojo: la búsqueda de la tienda trae parecidos (buscar `8216` trae `148216`), por eso se compara el código exacto.
+  - **Por variantes**: no está el código, pero sí sus variantes (`3M201-GRE`…).
+  - **No está**. Si además estaba tildado "Cargado web", dice **"No está (estaba cargado)"**: se bajó de la página.
+  - **Sin revisar**: todavía no se revisó.
+- **Cómo se revisa:**
+  - Botón **Revisar en la web** (admin y carga): revisa los artículos **elegidos** o, si no hay elegidos, **todos los que se ven** con los filtros. Va de a 40 y muestra el avance; al final, un resumen.
+  - **Solo, al abrir la descripción rápida** de un artículo que nunca se revisó. Si ya está publicado, la ventanita lo avisa en verde antes de que escribas nada.
+  - Filtros de **Mostrar**: "Sin revisar en la web", "Ya están en la web", "No están en la web".
+- **Si la tienda no responde**, ese código queda como estaba (no se marca "No está" por error) y el resumen lo cuenta aparte.
+- **Fecha de alta:** si al tildar "Cargado web" el artículo ya figuraba publicado, la fecha real es anterior y no se sabe: **no se pone la de hoy** (queda vacía para completarla a mano).
+- **Seguridad:** el resultado (`web_estado`, `web_revisado_en`, `web_url`, `web_nombre`) lo escribe **solo la función**, con la clave de servicio: los usuarios tienen permiso de editar únicamente sus columnas de trabajo, así nadie puede marcar "publicado" a mano. La función solo atiende a usuarios activos admin o carga.
+- **Tienda:** hoy consulta TiendaQuick (`https://www.cindymayorista.com.ar`). Se cambia con el secreto `TIENDA_URL` de la función. **Cuando la tienda pase a Tiendanube hay que adaptar la lectura** (otra página de búsqueda, y hoy pide contraseña de acceso).
+- Pruebas: `pruebas/web.test.mjs` (lectura de la búsqueda; con `PROBAR_TIENDA=1` consulta la tienda real).
 
 ### Nombre corto del proveedor
 Al lado de cada código se muestra el nombre con el que se conoce al proveedor en Cindy (Target, Bagcherry, Lesedife), no la razón social de Manager (Bagcherry figura como "ZUKI S.R.L."). No se puede sacar solo de la razón social, así que se carga **una vez por proveedor**:

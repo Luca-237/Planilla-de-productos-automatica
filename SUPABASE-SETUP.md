@@ -2,7 +2,7 @@
 
 Proyecto **nuevo y separado** de rótulos y de RRHH: las cuentas y los datos de compras no se mezclan con nada más.
 
-> **Estado (29/10/2026): hecho.** Proyecto `compras-cindy` (`bghjltwkkxnxjypuuvnu`, us-west-2), las 4 migraciones aplicadas, registro apagado, función `admin-usuarios` publicada y Luca como admin. Esta guía queda para rehacerlo o para un proyecto nuevo.
+> **Estado (29/10/2026): hecho.** Proyecto `compras-cindy` (`bghjltwkkxnxjypuuvnu`, us-west-2), las 5 migraciones aplicadas, registro apagado, funciones `admin-usuarios` y `buscar-en-web` publicadas y Luca como admin. Esta guía queda para rehacerlo o para un proyecto nuevo.
 
 > **Nunca pegues en el chat, en el vault ni en el código** la contraseña de la base ni la clave `secret` / `service_role`. Van al gestor de contraseñas.
 
@@ -24,6 +24,7 @@ Proyecto **nuevo y separado** de rótulos y de RRHH: las cuentas y los datos de 
 2. `20261029120000_permisos_funciones.sql`
 3. `20261029140000_nombre_corto_proveedor.sql` (nombre corto del proveedor: Target, Bagcherry…)
 4. `20261029160000_variantes_colores.sql` (variantes por color, catálogo de colores y fecha de alta automática)
+5. `20261029180000_revision_web.sql` (resultado de la revisión en la web y permisos por columna)
 
 Pegar el contenido **completo** → **Run**. Supabase avisa "Potential issue detected… destructive operations": es por los `drop … if exists` y `revoke`, que hacen que el script se pueda volver a correr. Confirmar con **Run query**. Tiene que decir **Success. No rows returned**.
 
@@ -69,6 +70,10 @@ Es la que usa la sección **Usuarios** de la página para crear cuentas, cambiar
    Con las claves nuevas de Supabase, las sesiones no están firmadas con el "legacy secret" y la puerta de entrada rechazaría al admin. La función controla sola que haya una sesión válida y que sea de un **admin activo** (lo recomienda el propio panel).
 
 Comprobarlo sin sesión: un `POST` a `https://<proyecto>.supabase.co/functions/v1/admin-usuarios` tiene que responder `401` ("Falta iniciar sesión"), y con un token inventado, `401` ("Sesión inválida o vencida").
+
+### 5.b Función `buscar-en-web`
+Igual que `admin-usuarios`: **Edge Functions → Deploy a new function → Via Editor**, pegar `supabase/functions/buscar-en-web/index.ts`, nombre **`buscar-en-web`** → **Deploy function** → en **Settings**, **Verify JWT with legacy secret** → **apagado**.
+Opcional: secreto `TIENDA_URL` (**Edge Functions → Secrets**) para cambiar la tienda que consulta; sin él usa `https://www.cindymayorista.com.ar`.
 
 ## 6. Crear el primer admin
 Solo el primero se crea desde el panel. Los demás, desde la página (**Configuración → Usuarios**).

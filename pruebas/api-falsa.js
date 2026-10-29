@@ -34,7 +34,7 @@
   function guardarArticulo(codigo, d) {
     const a = articulos.get(codigo), antes = a.cargado_web;
     Object.assign(a, d);
-    if (a.cargado_web && !antes && !a.fecha_alta_web) a.fecha_alta_web = hoyISO();
+    if (a.cargado_web && !antes && !a.fecha_alta_web && !['publicado', 'solo_variantes'].includes(a.web_estado)) a.fecha_alta_web = hoyISO();
     return { codigo, fecha_alta_web: a.fecha_alta_web };
   }
 
@@ -246,6 +246,22 @@
         const c = { id: nuevoId(), codigo, nombre: String(nombre).trim(), activo: true }; colores.push(c); return copia(c);
       },
       actualizar: async (id, d) => { if (!puedeCargar()) sinPermiso(); Object.assign(colores.find(c => c.id === id), d); },
+    },
+    // Imita a la función buscar-en-web con resultados fijos (no consulta la tienda real)
+    web: {
+      revisar: async codigos => {
+        if (!puedeCargar()) throw new Error("No tenés permiso para revisar en la web");
+        await espera(null);
+        const fijos = { DEMO103: "publicado", "EJ-501": "publicado", DEMO101: "solo_variantes" };
+        return codigos.map(codigo => {
+          const a = articulos.get(codigo);
+          if (codigo === "EJ-502") return { codigo, estado: "error", url: "", nombre: "", error: "la tienda no respondió (demo)" };
+          const estado = fijos[codigo] || "no_esta";
+          const r = { codigo, estado, url: estado === "no_esta" ? "" : "https://www.cindymayorista.com.ar/demo/" + codigo.toLowerCase() + ".html", nombre: estado === "no_esta" ? "" : (a ? a.descripcion : codigo) };
+          if (a) Object.assign(a, { web_estado: r.estado, web_url: r.url, web_nombre: r.nombre, web_revisado_en: new Date().toISOString() });
+          return r;
+        });
+      },
     },
     preferencias: { obtener: () => espera(ocultas), guardar: async c => { ocultas = c; } },
     usuarios: {
