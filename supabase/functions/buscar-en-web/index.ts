@@ -5,8 +5,10 @@
 //  esta función, que además guarda el resultado en "articulos" (web_*),
 //  columnas que los usuarios no pueden escribir.
 //
-//  POST { codigos: ["855338", "3M201", ...] }  (hasta 40 por pedido)
+//  POST { codigos: ["855338", "3M201", ...] }  (hasta 100 por pedido)
 //  Solo para usuarios activos con rol admin o carga.
+//  Con "Accept: text/event-stream" responde por SSE: un evento por código
+//  apenas se revisa (la planilla los va mostrando); sin eso, JSON al final.
 //
 //  Criterio (el mismo que la skill descripciones-web-cindy):
 //    publicado       → en la búsqueda aparece un producto con ese código idéntico
@@ -21,8 +23,8 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
-const MAX_CODIGOS = 40;
-const EN_PARALELO = 3;          // para no cargar la tienda
+const MAX_CODIGOS = 100;
+const EN_PARALELO = 4;          // para no cargar la tienda
 const ESPERA_MAX_MS = 12000;
 const CODIGO_VALIDO = /^[A-Za-z0-9.\-]{1,40}$/;
 
@@ -114,7 +116,9 @@ if (D && D.serve) {
       if (!token) return respuesta({ error: "Falta iniciar sesión" }, 401);
       const { data: { user }, error: errSesion } = await admin.auth.getUser(token);
       if (errSesion || !user) return respuesta({ error: "Sesión inválida o vencida. Volvé a ingresar." }, 401);
-      const { data: yo } = await admin.from("perfiles").select("rol, activo").eq("id", user.id).maybeSingle();
+      const { data: yo, error: errPerfil } = await admin.from("perfiles").select("rol, activo").eq("id", user.id).maybeSingle();
+      // Un error acá es de la base (ej. permisos de la clave de servicio), no del usuario: se muestra tal cual
+      if (errPerfil) return respuesta({ error: "La función no pudo leer los perfiles: " + errPerfil.message }, 500);
       if (!yo || !yo.activo || !["admin", "carga"].includes(yo.rol)) return respuesta({ error: "No tenés permiso para revisar en la web" }, 403);
 
       const body = await req.json().catch(() => ({}));
@@ -123,7 +127,7 @@ if (D && D.serve) {
       if (!codigos.length) return respuesta({ error: "No hay códigos para revisar" }, 400);
       if (codigos.length > MAX_CODIGOS) return respuesta({ error: "Como mucho " + MAX_CODIGOS + " códigos por pedido" }, 400);
 
-      const resultados = await enTandas(codigos, EN_PARALELO, async (codigo) => {
+      const revisar = async (codigo: string) => {
         try {
           const r = await revisarCodigo(codigo, tienda);
           const { error } = await admin.from("articulos").update({
@@ -135,8 +139,30 @@ if (D && D.serve) {
           // Si la tienda no responde no se guarda nada: vale el resultado anterior
           return { codigo, estado: "error", url: "", nombre: "", error: e instanceof Error ? e.message : String(e) };
         }
+      };
+
+      if (!(req.headers.get("Accept") ?? "").includes("text/event-stream")) {
+        return respuesta({ resultados: await enTandas(codigos, EN_PARALELO, revisar) });
+      }
+      // SSE: cada resultado sale apenas está; si la página corta (botón Detener), no se revisa el resto
+      const enc = new TextEncoder();
+      let cortado = false;
+      const cuerpo = new ReadableStream({
+        async start(ctrl) {
+          const enviar = (texto: string) => { if (!cortado) try { ctrl.enqueue(enc.encode(texto)); } catch { cortado = true; } };
+          enviar(": revisando\n\n");
+          await enTandas(codigos, EN_PARALELO, async (codigo) => {
+            if (cortado) return null;
+            const r = await revisar(codigo);
+            enviar("data: " + JSON.stringify(r) + "\n\n");
+            return r;
+          });
+          enviar("event: fin\ndata: {}\n\n");
+          if (!cortado) ctrl.close();
+        },
+        cancel() { cortado = true; },
       });
-      return respuesta({ resultados });
+      return new Response(cuerpo, { headers: { ...CORS, "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache" } });
     } catch (e) {
       return respuesta({ error: e instanceof Error ? e.message : String(e) }, 400);
     }

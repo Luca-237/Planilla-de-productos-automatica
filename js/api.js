@@ -173,19 +173,49 @@
   };
 
   // ---------- Revisión en la web (Edge Function buscar-en-web) ----------
-  // Revisa si los códigos ya están publicados en la web de Cindy y guarda el resultado en la base
+  // Revisa si los códigos ya están publicados en la web de Cindy y guarda el resultado en la base.
+  // Los resultados llegan de a uno por SSE, apenas la función revisa cada código: alResultado(r)
+  // se llama con cada uno. "senal" (AbortController.signal) corta la revisión.
   const web = {
-    async revisar(codigos) {
-      const { data, error } = await sb.functions.invoke("buscar-en-web", { body: { codigos } });
-      if (error) {
-        let m = error.message;
-        try { const j = await error.context.json(); if (j && j.error) m = j.error; } catch (e) {}
-        if (/Failed to send a request/i.test(m)) m = 'No se pudo contactar la función "buscar-en-web". ¿Está publicada en Supabase?';
+    async revisar(codigos, { alResultado, senal } = {}) {
+      const c = window.COMPRAS_CONFIG, s = await auth.sesion();
+      if (!s) throw new Error("La sesión venció. Volvé a ingresar.");
+      let r;
+      try {
+        r = await fetch(c.supabaseUrl.replace(/\/+$/, "") + "/functions/v1/buscar-en-web", {
+          method: "POST", signal: senal, body: JSON.stringify({ codigos }),
+          headers: { Authorization: "Bearer " + s.access_token, apikey: c.supabaseKey, "Content-Type": "application/json", Accept: "text/event-stream" },
+        });
+      } catch (e) {
+        if (e.name === "AbortError") throw e;
+        throw new Error('No se pudo contactar la función "buscar-en-web". ¿Está publicada en Supabase?');
+      }
+      if (!r.ok) {
+        let m = "La función respondió " + r.status;
+        try { const j = await r.json(); if (j && (j.error || j.msg || j.message)) m = j.error || j.msg || j.message; } catch (e) {}
         if (/Invalid JWT|UNAUTHORIZED/i.test(m)) m = 'La función rechazó la sesión. En Supabase → Edge Functions → buscar-en-web → desactivar "Verify JWT".';
         throw new Error(mensaje({ message: m }));
       }
-      if (data && data.error) throw new Error(data.error);
-      return data.resultados;
+      // Cada evento es "data: {...}" + línea en blanco; las líneas ": …" solo mantienen viva la conexión
+      const resultados = [], lector = r.body.getReader(), dec = new TextDecoder();
+      let resto = "";
+      for (;;) {
+        const { value, done } = await lector.read();
+        if (done) break;
+        resto += dec.decode(value, { stream: true });
+        let k;
+        while ((k = resto.indexOf("\n\n")) >= 0) {
+          const bloque = resto.slice(0, k);
+          resto = resto.slice(k + 2);
+          if (/^event: fin/m.test(bloque)) continue;
+          const datos = bloque.split("\n").filter(l => l.startsWith("data:")).map(l => l.slice(5).trim()).join("");
+          if (!datos) continue;
+          const res = JSON.parse(datos);
+          resultados.push(res);
+          if (alResultado) alResultado(res);
+        }
+      }
+      return resultados;
     },
   };
 

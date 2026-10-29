@@ -114,7 +114,7 @@
         ${cols.map(c => `<th class="${c.clase.includes("num") ? "num" : ""}">${esc(c.titulo)}</th>`).join("")}</tr></thead>
       <tbody>${filasTabla.map((f, i) => `<tr class="${puede ? "clic" : ""} ${seleccion.has(f.codigo) ? "seleccionada" : ""} ${f.es_variante ? "fila-variante" : ""}" data-i="${i}">
         ${puede ? `<td class="col-sel"><input type="checkbox" class="sel" ${seleccion.has(f.codigo) ? "checked" : ""} aria-label="Elegir ${esc(f.codigo)}"></td>` : ""}
-        ${cols.map(c => `<td class="${c.clase}">${c.ver(f)}</td>`).join("")}</tr>`).join("")
+        ${cols.map(c => `<td class="${c.clase}" data-c="${c.clave}">${c.ver(f)}</td>`).join("")}</tr>`).join("")
         || `<tr><td colspan="${cols.length + (puede ? 1 : 0)}" class="vacio">${filas.length ? "Nada coincide con el filtro." : "Todavía no hay órdenes de compra cargadas."}</td></tr>`}</tbody>`;
     $("planilla-tabla")._filas = filasTabla;
     $("planilla-pie").textContent = [
@@ -122,6 +122,36 @@
         lista.length !== filas.length ? `Mostrando ${fmtNum(lista.length)} de ${fmtNum(filas.length)} filas.` : `${fmtNum(filas.length)} filas.`,
       puede ? "Las casillas se guardan al tildarlas. Clic en la descripción para escribirla ahí mismo (Ctrl+Enter guarda y pasa al siguiente). Para marcar varios juntos, elegilos en la primera columna (Shift + clic elige un rango). Clic en el resto de la fila: todos los datos." : "",
     ].filter(Boolean).join(" ");
+    pintarBarraSeleccion();
+  }
+
+  // Redibuja solo esas celdas de las filas de esos códigos (rehacer las ~1000 filas de la tabla
+  // en cada cambio la ponía lenta). Si el filtro "Mostrar" depende de esos datos, la fila puede
+  // tener que aparecer o desaparecer: ahí se redibuja todo, salvo que se pida lo contrario
+  // (mientras se revisa en la web, para que las filas no salten).
+  function refrescarCeldas(codigos, claves, siFiltraTodo = true) {
+    const falta = $("planilla-falta").value;
+    if (siFiltraTodo && falta && claves.some(k => k === falta || (k === "web_estado" && falta.startsWith("web_")))) return pintar();
+    const set = new Set(codigos), lista = mostradas(), cols = visibles().filter(c => claves.includes(c.clave));
+    if (!cols.length) return;
+    document.querySelectorAll("#planilla-tabla tbody tr[data-i]").forEach(tr => {
+      const fila = lista[Number(tr.dataset.i)];
+      if (!fila || !set.has(fila.codigo)) return;
+      cols.forEach(c => { const td = tr.querySelector(`td[data-c="${c.clave}"]`); if (td) td.innerHTML = c.ver(fila); });
+    });
+  }
+
+  // Marca lo elegido en las filas a la vista, sin rehacer la tabla
+  function pintarSeleccion() {
+    const lista = mostradas();
+    document.querySelectorAll("#planilla-tabla tbody tr[data-i]").forEach(tr => {
+      const si = seleccion.has(lista[Number(tr.dataset.i)].codigo);
+      tr.classList.toggle("seleccionada", si);
+      const c = tr.querySelector("input.sel");
+      if (c) c.checked = si;
+    });
+    const todas = $("sel-todas");
+    if (todas) todas.checked = lista.length > 0 && lista.every(x => seleccion.has(x.codigo));
     pintarBarraSeleccion();
   }
 
@@ -170,12 +200,13 @@
     try {
       const guardado = await R.api.articulos.actualizar(f.codigo, { [campo]: valor });
       // Al marcar "Cargado web" la base completa sola la fecha de alta: se muestra enseguida
-      if (campo === "cargado_web" && guardado && guardado.fecha_alta_web !== f.fecha_alta_web) { aplicarLocal([f.codigo], "fecha_alta_web", guardado.fecha_alta_web); pintar(); }
-      // Si hay un filtro "Mostrar", la fila puede dejar de corresponder: se redibuja
-      else if ($("planilla-falta").value === campo) pintar();
+      // (y el aviso "No está (estaba cargado)" depende de esta casilla)
+      if (campo === "cargado_web" && guardado) aplicarLocal([f.codigo], "fecha_alta_web", guardado.fecha_alta_web);
+      // Si hay un filtro "Mostrar", la fila puede dejar de corresponder: refrescarCeldas redibuja todo
+      refrescarCeldas([f.codigo], campo === "cargado_web" ? ["fecha_alta_web", "web_estado", campo] : [campo]);
     } catch (e) {
       aplicarLocal([f.codigo], campo, antes);
-      pintar();
+      refrescarCeldas([f.codigo], [campo], false);
       toast(e.message, "error", 6000);
     }
   }
@@ -190,7 +221,7 @@
       aplicarLocal(codigos, campo, valor);
       (hechas || []).forEach(h => aplicarLocal([h.codigo], "fecha_alta_web", h.fecha_alta_web));
       toast(`${nombre}: ${valor ? "marcado" : "desmarcado"} en ${plural(codigos.length, "artículo", "artículos")}.`);
-      pintar();
+      refrescarCeldas(codigos, [campo, "fecha_alta_web", "web_estado"]);
     } catch (e) { toast(e.message, "error", 6000); }
     finally { ["seleccion-marcar", "seleccion-desmarcar"].forEach(id => { $(id).disabled = false; }); }
   }
@@ -204,7 +235,7 @@
       if (input.checked) seleccion.add(lista[k].codigo); else seleccion.delete(lista[k].codigo);
     }
     ultimoClic = i;
-    pintar();
+    pintarSeleccion();
   }
 
   // ---------- Descripción web rápida (ventanita sobre la celda) ----------
@@ -274,7 +305,7 @@
       const [r] = await R.api.web.revisar([f.codigo]);
       if (r.estado === "error") throw new Error(r.error);
       aplicarWeb([r]);
-      pintar();
+      refrescarCeldas([f.codigo], ["web_estado"], false);
     } catch (e) { toast(`No se pudo revisar en la web: ${e.message}`, "error", 6000); }
     // La ventanita puede seguir abierta sobre otra fila: solo se actualiza si es la misma
     const actual = popIndice != null && mostradas()[popIndice];
@@ -297,30 +328,50 @@
   }
 
   // ---------- Revisar en la web (varios) ----------
-  // Los elegidos; si no hay elegidos, todos los que se ven con los filtros. De a 40 por pedido.
-  let revisando = false;
+  // Los elegidos; si no hay elegidos, todos los que se ven con los filtros. Los resultados llegan
+  // de a uno (SSE) y cada fila se actualiza apenas está. De a 100 por pedido. Otro clic: detener.
+  const LOTE_WEB = 100;
+  let revisionWeb = null; // AbortController de la revisión en curso
   async function revisarEnWeb() {
-    if (revisando) return;
+    if (revisionWeb) return revisionWeb.abort();
     const codigos = seleccion.size ? [...seleccion] : [...new Set(filtradas().map(f => f.codigo))];
     if (!codigos.length) return toast("No hay artículos para revisar.", "error");
-    if (codigos.length > 120 && !confirm(`Se van a revisar ${fmtNum(codigos.length)} artículos en la web. Tarda más o menos ${Math.ceil(codigos.length / 120)} minuto(s). ¿Seguir?`)) return;
-    revisando = true;
+    if (codigos.length > 300 && !confirm(`Se van a revisar ${fmtNum(codigos.length)} artículos en la web. Tarda más o menos ${Math.ceil(codigos.length / 150)} minuto(s); se puede detener cuando quieras. ¿Seguir?`)) return;
+    const control = revisionWeb = new AbortController();
     const boton = $("planilla-revisar-web"), texto = $("planilla-revisar-texto");
-    boton.disabled = true;
+    boton.classList.add("detener");
+    boton.title = "Detener la revisión (lo ya revisado queda guardado)";
     const cuenta = { publicado: 0, solo_variantes: 0, no_esta: 0, error: 0 };
+    let hechos = 0;
+    const avance = () => { texto.textContent = `Revisando ${fmtNum(hechos)} de ${fmtNum(codigos.length)} · Detener`; };
+    avance();
     try {
-      for (let i = 0; i < codigos.length; i += 40) {
-        texto.textContent = `Revisando ${fmtNum(Math.min(i + 40, codigos.length))} de ${fmtNum(codigos.length)}…`;
-        const resultados = await R.api.web.revisar(codigos.slice(i, i + 40));
-        resultados.forEach(r => { cuenta[r.estado] = (cuenta[r.estado] || 0) + 1; });
-        aplicarWeb(resultados);
-        pintar();
+      for (let i = 0; i < codigos.length && !control.signal.aborted; i += LOTE_WEB) {
+        await R.api.web.revisar(codigos.slice(i, i + LOTE_WEB), {
+          senal: control.signal,
+          alResultado: r => {
+            hechos++;
+            cuenta[r.estado] = (cuenta[r.estado] || 0) + 1;
+            if (r.estado !== "error") { aplicarWeb([r]); refrescarCeldas([r.codigo], ["web_estado"], false); }
+            avance();
+          },
+        });
       }
-      const partes = [`${fmtNum(cuenta.publicado)} en la web`, `${fmtNum(cuenta.solo_variantes)} por variantes`, `${fmtNum(cuenta.no_esta)} no están`];
-      if (cuenta.error) partes.push(`${fmtNum(cuenta.error)} sin respuesta de la tienda (quedan como estaban)`);
-      toast(`Revisados ${fmtNum(codigos.length)}: ${partes.join(", ")}.`, cuenta.error ? "error" : "ok", 8000);
-    } catch (e) { toast(e.message, "error", 7000); }
-    finally { revisando = false; boton.disabled = false; texto.textContent = "Revisar en la web"; }
+    } catch (e) {
+      if (e.name !== "AbortError") toast(e.message, "error", 7000);
+    } finally {
+      revisionWeb = null;
+      boton.classList.remove("detener");
+      boton.title = "Revisa si los artículos elegidos (o, si no hay elegidos, todos los que se ven) ya están publicados en la web de Cindy";
+      texto.textContent = "Revisar en la web";
+      // Con un filtro de la web en "Mostrar", recién ahora las filas se reacomodan
+      if ($("planilla-falta").value.startsWith("web_")) pintar();
+    }
+    if (!hechos) return;
+    const partes = [`${fmtNum(cuenta.publicado)} en la web`, `${fmtNum(cuenta.solo_variantes)} por variantes`, `${fmtNum(cuenta.no_esta)} no están`];
+    if (cuenta.error) partes.push(`${fmtNum(cuenta.error)} sin respuesta de la tienda (quedan como estaban)`);
+    const cortada = hechos < codigos.length ? `Revisión detenida: ${fmtNum(hechos)} de ${fmtNum(codigos.length)}` : `Revisados ${fmtNum(hechos)}`;
+    toast(`${cortada}: ${partes.join(", ")}.`, cuenta.error ? "error" : "ok", 8000);
   }
 
   async function guardarPop(seguir) {
@@ -335,7 +386,7 @@
       await R.api.articulos.actualizar(f.codigo, d);
       Object.entries(d).forEach(([k, v]) => aplicarLocal([f.codigo], k, v));
       cerrarPop(true);
-      pintar();
+      refrescarCeldas([f.codigo], Object.keys(d));
       if (seguir && siguiente) {
         const j = mostradas().findIndex(x => x.codigo === siguiente.codigo);
         if (j >= 0) { celdaDesc(j).scrollIntoView({ block: "nearest" }); abrirPop(j); }
@@ -474,7 +525,9 @@
   }
 
   function iniciar() {
-    $("planilla-buscar").addEventListener("input", pintar);
+    // Espera a que se deje de escribir: redibujar en cada tecla trababa la escritura
+    let esperaBuscar = 0;
+    $("planilla-buscar").addEventListener("input", () => { clearTimeout(esperaBuscar); esperaBuscar = setTimeout(pintar, 180); });
     $("planilla-proveedor").addEventListener("change", pintar);
     $("planilla-estado").addEventListener("change", pintar);
     $("planilla-falta").addEventListener("change", pintar);
@@ -494,7 +547,7 @@
     window.addEventListener("hashchange", () => pantallaCompleta(false));
     $("seleccion-marcar").addEventListener("click", () => marcarElegidos(true));
     $("seleccion-desmarcar").addEventListener("click", () => marcarElegidos(false));
-    $("seleccion-limpiar").addEventListener("click", () => { seleccion.clear(); ultimoClic = null; pintar(); });
+    $("seleccion-limpiar").addEventListener("click", () => { seleccion.clear(); ultimoClic = null; pintarSeleccion(); });
 
     // Ventanita de descripción
     $("pop-desc-guardar").addEventListener("click", () => guardarPop(false));
@@ -517,7 +570,7 @@
       else if (e.target.id === "sel-todas") {
         mostradas().forEach(f => { if (e.target.checked) seleccion.add(f.codigo); else seleccion.delete(f.codigo); });
         ultimoClic = null;
-        pintar();
+        pintarSeleccion();
       }
     });
     tabla.addEventListener("click", e => {

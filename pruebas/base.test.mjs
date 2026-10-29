@@ -33,7 +33,7 @@ let db;
 before(async () => {
   db = new PGlite();
   await db.exec(`
-    create role anon; create role authenticated;
+    create role anon; create role authenticated; create role service_role bypassrls;
     create schema auth;
     create table auth.users (id uuid primary key, email text, raw_user_meta_data jsonb default '{}');
     create function auth.uid() returns uuid language sql stable
@@ -291,9 +291,14 @@ test('revisión web: solo la función escribe el resultado; si ya estaba publica
   await assert.rejects(como(U.admin, "update public.articulos set web_url = 'x' where codigo = 'W1'"), /permission denied/);
   // sí sus columnas de trabajo
   assert.equal((await como(U.carga, "update public.articulos set foto = true, descripcion_web = 'x' where codigo = 'W1' returning codigo")).length, 1);
-  // lo que escribe la función (acá, como dueño de la base)
-  await db.query("update public.articulos set web_estado = 'publicado', web_revisado_en = now(), web_url = 'https://tienda/w1', web_nombre = 'W1 WEB' where codigo = 'W1'");
-  await db.query("update public.articulos set web_estado = 'no_esta', web_revisado_en = now() where codigo = 'W2'");
+  // lo que escribe la función, con la clave de servicio
+  await db.transaction(async tx => {
+    await tx.exec('set local role service_role;');
+    // la función primero lee el perfil de quien la llama (sin este permiso respondía 403)
+    assert.equal((await tx.query("select rol, activo from public.perfiles where id = '" + U.carga + "'")).rows[0].rol, 'carga');
+    await tx.query("update public.articulos set web_estado = 'publicado', web_revisado_en = now(), web_url = 'https://tienda/w1', web_nombre = 'W1 WEB' where codigo = 'W1'");
+    await tx.query("update public.articulos set web_estado = 'no_esta', web_revisado_en = now() where codigo = 'W2'");
+  });
   assert.deepEqual(await como(U.consulta, "select codigo, web_estado, web_url from public.v_planilla where orden = '0001-00000060' order by codigo"),
     [{ codigo: 'W1', web_estado: 'publicado', web_url: 'https://tienda/w1' }, { codigo: 'W2', web_estado: 'no_esta', web_url: '' }]);
   // tildar "Cargado web": W1 ya estaba publicado (fecha real desconocida) -> queda vacía; W2 -> hoy

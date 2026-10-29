@@ -50,14 +50,20 @@ Para no cargar algo dos veces, la planilla revisa si cada artículo **ya está p
   - **No está**. Si además estaba tildado "Cargado web", dice **"No está (estaba cargado)"**: se bajó de la página.
   - **Sin revisar**: todavía no se revisó.
 - **Cómo se revisa:**
-  - Botón **Revisar en la web** (admin y carga): revisa los artículos **elegidos** o, si no hay elegidos, **todos los que se ven** con los filtros. Va de a 40 y muestra el avance; al final, un resumen.
+  - Botón **Revisar en la web** (admin y carga): revisa los artículos **elegidos** o, si no hay elegidos, **todos los que se ven** con los filtros. Cada fila se actualiza **apenas se revisa** (la función manda los resultados de a uno por **SSE**, de a 100 códigos por pedido y 4 en paralelo). Mientras revisa, el mismo botón dice **Detener**: corta y lo ya revisado queda guardado. Al final, un resumen.
   - **Solo, al abrir la descripción rápida** de un artículo que nunca se revisó. Si ya está publicado, la ventanita lo avisa en verde antes de que escribas nada.
   - Filtros de **Mostrar**: "Sin revisar en la web", "Ya están en la web", "No están en la web".
 - **Si la tienda no responde**, ese código queda como estaba (no se marca "No está" por error) y el resumen lo cuenta aparte.
 - **Fecha de alta:** si al tildar "Cargado web" el artículo ya figuraba publicado, la fecha real es anterior y no se sabe: **no se pone la de hoy** (queda vacía para completarla a mano).
 - **Seguridad:** el resultado (`web_estado`, `web_revisado_en`, `web_url`, `web_nombre`) lo escribe **solo la función**, con la clave de servicio: los usuarios tienen permiso de editar únicamente sus columnas de trabajo, así nadie puede marcar "publicado" a mano. La función solo atiende a usuarios activos admin o carga.
 - **Tienda:** hoy consulta TiendaQuick (`https://www.cindymayorista.com.ar`). Se cambia con el secreto `TIENDA_URL` de la función. **Cuando la tienda pase a Tiendanube hay que adaptar la lectura** (otra página de búsqueda, y hoy pide contraseña de acceso).
+- **Permisos de la clave de servicio** (migración 6): el proyecto se creó con "Automatically expose new tables" apagado, así que `service_role` no tenía permisos en ninguna tabla y las funciones (`buscar-en-web` y `admin-usuarios`) respondían **403** al leer `perfiles`. Ahora la función devuelve el error real de la base en vez de un 403 engañoso.
 - Pruebas: `pruebas/web.test.mjs` (lectura de la búsqueda; con `PROBAR_TIENDA=1` consulta la tienda real).
+
+### Fluidez de la planilla
+- Tildar casillas, elegir filas, guardar la descripción y revisar en la web **redibujan solo las celdas que cambian**, no la tabla entera (hasta 1000 filas). Cada celda lleva `data-c` con su columna; lo hace `refrescarCeldas(codigos, claves)` en `js/vistas/planilla.js`.
+- Si el filtro **Mostrar** depende del dato que cambió, ahí sí se redibuja todo (la fila puede tener que salir). Durante la revisión en la web no: las filas no saltan mientras llegan resultados, y se reacomodan al terminar.
+- El buscador espera a que se deje de escribir (180 ms) antes de filtrar.
 
 ### Nombre corto del proveedor
 Al lado de cada código se muestra el nombre con el que se conoce al proveedor en Cindy (Target, Bagcherry, Lesedife), no la razón social de Manager (Bagcherry figura como "ZUKI S.R.L."). No se puede sacar solo de la razón social, así que se carga **una vez por proveedor**:

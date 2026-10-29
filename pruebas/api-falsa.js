@@ -249,18 +249,26 @@
     },
     // Imita a la función buscar-en-web con resultados fijos (no consulta la tienda real)
     web: {
-      revisar: async codigos => {
+      // Como la real: entrega los resultados de a uno (acá, cada 250 ms) y se puede cortar
+      revisar: async (codigos, { alResultado, senal } = {}) => {
         if (!puedeCargar()) throw new Error("No tenés permiso para revisar en la web");
-        await espera(null);
         const fijos = { DEMO103: "publicado", "EJ-501": "publicado", DEMO101: "solo_variantes" };
-        return codigos.map(codigo => {
+        const salida = [];
+        for (const codigo of codigos) {
+          await new Promise(ok => setTimeout(ok, 250));
+          if (senal && senal.aborted) throw new DOMException("Detenido", "AbortError");
           const a = articulos.get(codigo);
-          if (codigo === "EJ-502") return { codigo, estado: "error", url: "", nombre: "", error: "la tienda no respondió (demo)" };
-          const estado = fijos[codigo] || "no_esta";
-          const r = { codigo, estado, url: estado === "no_esta" ? "" : "https://www.cindymayorista.com.ar/demo/" + codigo.toLowerCase() + ".html", nombre: estado === "no_esta" ? "" : (a ? a.descripcion : codigo) };
-          if (a) Object.assign(a, { web_estado: r.estado, web_url: r.url, web_nombre: r.nombre, web_revisado_en: new Date().toISOString() });
-          return r;
-        });
+          let r;
+          if (codigo === "EJ-502") r = { codigo, estado: "error", url: "", nombre: "", error: "la tienda no respondió (demo)" };
+          else {
+            const estado = fijos[codigo] || "no_esta";
+            r = { codigo, estado, url: estado === "no_esta" ? "" : "https://www.cindymayorista.com.ar/demo/" + codigo.toLowerCase() + ".html", nombre: estado === "no_esta" ? "" : (a ? a.descripcion : codigo) };
+            if (a) Object.assign(a, { web_estado: r.estado, web_url: r.url, web_nombre: r.nombre, web_revisado_en: new Date().toISOString() });
+          }
+          salida.push(r);
+          if (alResultado) alResultado(copia(r));
+        }
+        return salida;
       },
     },
     preferencias: { obtener: () => espera(ocultas), guardar: async c => { ocultas = c; } },

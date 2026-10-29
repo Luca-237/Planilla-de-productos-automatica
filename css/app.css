@@ -352,3 +352,6 @@ body.sin-scroll { overflow:hidden; }
 a.web-chip:hover { text-decoration:underline; }
 .pop-desc-web { margin:0 0 8px; padding:6px 10px; border-left:3px solid var(--linea); background:var(--fondo); font-size:12.5px; color:var(--muted); }
 .pop-desc-web.ya { border-left-color:var(--verde); background:var(--verde-suave); color:var(--verde); font-weight:600; }
+
+/* Revisar en la web: mientras revisa, el mismo botón detiene */
+#planilla-revisar-web.detener { background: transparent; color: var(--naranja-texto); border-color: var(--naranja-texto); }
