@@ -18,6 +18,8 @@
     cargado_web: "Cargado web", catalogo: "Catálogo", ya_no_esta: "Ya no está en la página",
   };
   const editable = () => app().puedeCargar();
+  const urlWeb = codigo => String((window.COMPRAS_CONFIG || {}).urlBusquedaWeb || "").replace("{codigo}", encodeURIComponent(codigo));
+  const ICONO_BUSCAR = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>`;
   const si = v => v ? `<span class="si">Sí</span>` : `<span class="no">No</span>`;
   const casilla = campo => f => editable()
     ? `<input type="checkbox" class="tilde" data-campo="${campo}" ${f[campo] ? "checked" : ""} aria-label="${esc(TILDES[campo])} · ${esc(f.codigo)}">`
@@ -27,29 +29,34 @@
   const vistaDesc = f => f.descripcion_web
     ? `<span class="desc-vista">${esc(f.descripcion_web)}</span>`
     : (editable() ? `<span class="desc-vacia">+ Agregar descripción</span>` : "—");
+  // Si el artículo ya está en la web, un botón al lado abre la búsqueda de su código en la página de Cindy
+  const celdaDescripcion = f => `<div class="desc-fila">${vistaDesc(f)}${f.cargado_web && urlWeb(f.codigo) ? `<a class="buscar-web-mini" href="${esc(urlWeb(f.codigo))}" target="_blank" rel="noopener" title="Buscar ${esc(f.codigo)} en la web" aria-label="Buscar ${esc(f.codigo)} en la web">${ICONO_BUSCAR}</a>` : ""}</div>`;
 
   // [clave, título, grupo, cómo se muestra, clase de la celda]
   const COLUMNAS = [
     // El código va siempre con el nombre corto del proveedor al lado (Target, Bagcherry…)
-    ["codigo", "Código", "Compra", f => `<strong>${esc(f.codigo)}</strong>${etiquetaProveedor(f.proveedor, f.razon_social)}`],
+    ["codigo", "Código", "Compra", f => f.es_variante
+      ? `<span class="variante-cod"><strong>${esc(f.codigo)}</strong>${f.color ? `<span class="tag-color">${esc(f.color)}</span>` : ""}</span>`
+      : `<strong>${esc(f.codigo)}</strong>${etiquetaProveedor(f.proveedor, f.razon_social)}${f.n_variantes ? `<span class="tag-var">${f.n_variantes} ${f.n_variantes === 1 ? "variante" : "variantes"}</span>` : ""}`],
     ["nombre", "Nombre", "Compra"],
     // Descripción y casillas al lado del nombre, para no tener que desplazarse
-    ["descripcion_web", "Descripción web", "Casillas", vistaDesc, "celda-desc"],
+    ["descripcion_web", "Descripción web", "Casillas", celdaDescripcion, "celda-desc"],
     ...Object.keys(TILDES).map(k => [k, TILDES[k], "Casillas", casilla(k), "num celda-tilde"]),
     ["orden", "Orden de compra", "Compra"],
     ["fecha_orden", "Fecha OC", "Compra", f => fmtFecha(f.fecha_orden)],
     ["proveedor", "Proveedor", "Compra"],
     ["razon_social", "Razón social", "Compra"],
-    ["cantidad", "Cantidad", "Compra", f => fmtNum(f.cantidad), "num"],
-    ["precio_unitario", "Precio unit.", "Compra", f => fmtPesos(f.precio_unitario), "num"],
+    ["cantidad", "Cantidad", "Compra", f => f.es_variante ? "" : fmtNum(f.cantidad), "num"],
+    ["precio_unitario", "Precio unit.", "Compra", f => f.es_variante ? "" : fmtPesos(f.precio_unitario), "num"],
     ["estado", "Estado", "Compra", f => chipEstado(f.estado)],
-    ["recibido", "Llegó", "Compra", f => fmtNum(f.recibido), "num"],
-    ["pendiente", "Falta", "Compra", f => fmtNum(f.pendiente), "num"],
+    ["recibido", "Llegó", "Compra", f => f.es_variante ? "" : fmtNum(f.recibido), "num"],
+    ["pendiente", "Falta", "Compra", f => f.es_variante ? "" : fmtNum(f.pendiente), "num"],
     ["dias_desde_orden", "Días", "Compra", f => fmtNum(f.dias_desde_orden), "num"],
     ["ultima_recepcion", "Última llegada", "Compra", f => fmtFecha(f.ultima_recepcion)],
     ["tipo", "Tipo", "Web"],
     ["variantes", "Variantes", "Web"],
     ["cod_barra", "Cód. barra", "Web"],
+    ["color", "Color", "Web"],
     ["fecha_alta_web", "Fecha alta web", "Web", f => fmtFecha(f.fecha_alta_web)],
     ["observaciones", "Observaciones", "Web", null, "texto-largo"],
     ["titulo_web", "Título web", "Web"],
@@ -85,7 +92,7 @@
     $("planilla-tabla").innerHTML = `<thead><tr>
         ${puede ? `<th class="col-sel"><input type="checkbox" class="sel" id="sel-todas" ${todasElegidas ? "checked" : ""} aria-label="Elegir todas las filas que se ven"></th>` : ""}
         ${cols.map(c => `<th class="${c.clase.includes("num") ? "num" : ""}">${esc(c.titulo)}</th>`).join("")}</tr></thead>
-      <tbody>${filasTabla.map((f, i) => `<tr class="${puede ? "clic" : ""} ${seleccion.has(f.codigo) ? "seleccionada" : ""}" data-i="${i}">
+      <tbody>${filasTabla.map((f, i) => `<tr class="${puede ? "clic" : ""} ${seleccion.has(f.codigo) ? "seleccionada" : ""} ${f.es_variante ? "fila-variante" : ""}" data-i="${i}">
         ${puede ? `<td class="col-sel"><input type="checkbox" class="sel" ${seleccion.has(f.codigo) ? "checked" : ""} aria-label="Elegir ${esc(f.codigo)}"></td>` : ""}
         ${cols.map(c => `<td class="${c.clase}">${c.ver(f)}</td>`).join("")}</tr>`).join("")
         || `<tr><td colspan="${cols.length + (puede ? 1 : 0)}" class="vacio">${filas.length ? "Nada coincide con el filtro." : "Todavía no hay órdenes de compra cargadas."}</td></tr>`}</tbody>`;
@@ -141,9 +148,11 @@
       if (g && otra && g.codigo === f.codigo) otra.checked = valor;
     });
     try {
-      await R.api.articulos.actualizar(f.codigo, { [campo]: valor });
+      const guardado = await R.api.articulos.actualizar(f.codigo, { [campo]: valor });
+      // Al marcar "Cargado web" la base completa sola la fecha de alta: se muestra enseguida
+      if (campo === "cargado_web" && guardado && guardado.fecha_alta_web !== f.fecha_alta_web) { aplicarLocal([f.codigo], "fecha_alta_web", guardado.fecha_alta_web); pintar(); }
       // Si hay un filtro "Mostrar", la fila puede dejar de corresponder: se redibuja
-      if ($("planilla-falta").value === campo) pintar();
+      else if ($("planilla-falta").value === campo) pintar();
     } catch (e) {
       aplicarLocal([f.codigo], campo, antes);
       pintar();
@@ -157,8 +166,9 @@
     const nombre = TILDES[campo];
     ["seleccion-marcar", "seleccion-desmarcar"].forEach(id => { $(id).disabled = true; });
     try {
-      await R.api.articulos.actualizarVarios(codigos, { [campo]: valor });
+      const hechas = await R.api.articulos.actualizarVarios(codigos, { [campo]: valor });
       aplicarLocal(codigos, campo, valor);
+      (hechas || []).forEach(h => aplicarLocal([h.codigo], "fecha_alta_web", h.fecha_alta_web));
       toast(`${nombre}: ${valor ? "marcado" : "desmarcado"} en ${plural(codigos.length, "artículo", "artículos")}.`);
       pintar();
     } catch (e) { toast(e.message, "error", 6000); }
@@ -203,6 +213,8 @@
     popIndice = i;
     popTextoOriginal = f.descripcion_web || "";
     $("pop-desc-titulo").innerHTML = `${esc(f.codigo)} · ${esc(f.nombre)}<small>${esc(f.proveedor)} · OC ${esc(f.orden)}</small>`;
+    $("pop-desc-web").hidden = !(f.cargado_web && urlWeb(f.codigo));
+    if (!$("pop-desc-web").hidden) $("pop-desc-web").href = urlWeb(f.codigo);
     $("pop-desc-texto").value = popTextoOriginal;
     $("pop-desc-ok").checked = true; // escribir la descripción casi siempre es dejarla lista
     document.querySelectorAll("#planilla-tabla tr.editando-desc").forEach(tr => tr.classList.remove("editando-desc"));
@@ -243,6 +255,20 @@
     finally { ["pop-desc-guardar", "pop-desc-seguir"].forEach(id => { $(id).disabled = false; }); }
   }
 
+  // ---------- Pantalla completa (solo la planilla) ----------
+  // Tapa menú y barra con la planilla y, si el navegador deja, también pasa a pantalla completa de verdad.
+  function pantallaCompleta(activar) {
+    const sec = $("vista-planilla"), on = activar === undefined ? !sec.classList.contains("pantalla-completa") : activar;
+    if (on === sec.classList.contains("pantalla-completa")) return;
+    sec.classList.toggle("pantalla-completa", on);
+    document.body.classList.toggle("sin-scroll", on);
+    $("planilla-completa-texto").textContent = on ? "Salir de pantalla completa" : "Pantalla completa";
+    try {
+      if (on && !document.fullscreenElement && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
+      else if (!on && document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    } catch (e) { /* sin pantalla completa del navegador queda la del sitio */ }
+  }
+
   // ---------- Columnas ----------
   function abrirColumnas() {
     const grupos = [...new Set(COLUMNAS.map(c => c.grupo))];
@@ -264,7 +290,7 @@
   }
 
   // ---------- Datos web del artículo (diálogo) ----------
-  const CAMPOS_TEXTO = ["titulo_web", "descripcion_web", "tipo", "variantes", "cod_barra", "fecha_alta_web", "observaciones"];
+  const CAMPOS_TEXTO = ["titulo_web", "descripcion_web", "tipo", "cod_barra", "fecha_alta_web", "observaciones"];
   const CAMPOS_SI_NO = Object.keys(TILDES);
 
   function abrirArticulo(f) {
@@ -272,7 +298,61 @@
     $("articulo-titulo").textContent = `${f.codigo} · ${f.nombre}`;
     CAMPOS_TEXTO.forEach(k => { $("ar-" + k).value = f[k] ?? ""; });
     CAMPOS_SI_NO.forEach(k => { $("ar-" + k).checked = !!f[k]; });
+    $("ar-color").value = f.color ? `${f.color} (${f.color_codigo})` : "";
+    $("ar-colores").innerHTML = "";
     $("dlg-articulo").showModal();
+    pintarVariantes();
+  }
+
+  // ---------- Variantes por color ----------
+  // Cada color del catálogo crea un artículo propio: código del principal + sufijo (123445-WHI)
+  let catalogo = [];
+  async function pintarVariantes(preelegir = []) {
+    const f = editando, caja = $("ar-variantes-caja");
+    const esVariante = f.es_variante || f.tipo === "VARIANTE";
+    caja.hidden = esVariante;
+    if (esVariante) return;
+    const hijas = [...new Map(filas.filter(x => x.es_variante && x.padre === f.codigo).map(x => [x.codigo, x])).values()];
+    $("ar-variantes-lista").innerHTML = hijas.length
+      ? hijas.map(h => `<span class="chip-var">${esc(h.codigo)}${h.color ? ` <small>${esc(h.color)}</small>` : ""}</span>`).join("")
+      : `<span class="hint" style="margin:0">Todavía no tiene variantes.</span>`;
+    const marcados = new Set([...$("ar-colores").querySelectorAll("input:checked")].map(i => Number(i.value)).concat(preelegir));
+    try { catalogo = await R.api.colores.listar(); } catch (e) { toast(e.message, "error"); }
+    if (editando !== f) return; // se cerró o se abrió otro mientras cargaba
+    const usados = new Set(hijas.map(h => h.color_codigo));
+    const libres = catalogo.filter(c => c.activo && !usados.has(c.codigo));
+    $("ar-colores").innerHTML = libres.map(c => `<label class="check"><input type="checkbox" value="${c.id}" ${marcados.has(c.id) ? "checked" : ""}> <strong>${esc(c.codigo)}</strong> ${esc(c.nombre)} <small>→ ${esc(f.codigo)}-${esc(c.codigo)}</small></label>`).join("")
+      || `<span class="hint" style="margin:0">Ya tiene variantes con todos los colores del catálogo. Agregá un color nuevo abajo.</span>`;
+  }
+
+  async function crearVariantes() {
+    const ids = [...$("ar-colores").querySelectorAll("input:checked")].map(i => Number(i.value));
+    if (!ids.length) return toast("Elegí al menos un color.", "error");
+    const codigo = editando.codigo;
+    $("ar-crear-variantes").disabled = true;
+    try {
+      const r = await R.api.articulos.crearVariantes(codigo, ids);
+      const partes = [r.creadas.length ? `Se crearon ${plural(r.creadas.length, "variante", "variantes")}: ${r.creadas.join(", ")}.` : "",
+        r.existentes.length ? `Ya existían: ${r.existentes.join(", ")}.` : "",
+        r.omitidas.length ? `No se crearon (ese código ya es de otro artículo): ${r.omitidas.join(", ")}.` : ""].filter(Boolean);
+      toast(partes.join(" "), r.omitidas.length ? "error" : "ok", 7000);
+      $("ar-colores").innerHTML = "";
+      await mostrar();
+      editando = filas.find(x => x.codigo === codigo && !x.es_variante) || editando;
+      pintarVariantes();
+    } catch (e) { toast(e.message, "error", 6000); }
+    finally { $("ar-crear-variantes").disabled = false; }
+  }
+
+  async function colorNuevo() {
+    const codigo = $("ar-nc-codigo").value.trim(), nombre = $("ar-nc-nombre").value.trim();
+    if (!codigo || !nombre) return toast("Escribí el sufijo y el nombre del color.", "error");
+    try {
+      const c = await R.api.colores.crear(codigo, nombre);
+      $("ar-nc-codigo").value = ""; $("ar-nc-nombre").value = "";
+      toast(`Color "${nombre}" agregado al catálogo (${c.codigo}). Ya sirve para cualquier producto.`);
+      pintarVariantes([c.id]);
+    } catch (e) { toast(e.message, "error", 6000); }
   }
 
   async function guardarArticulo(e) {
@@ -313,6 +393,14 @@
     $("columnas-guardar").addEventListener("click", guardarColumnas);
     $("columnas-todas").addEventListener("click", () => $("columnas-lista").querySelectorAll("input").forEach(i => { i.checked = true; }));
     $("form-articulo").addEventListener("submit", guardarArticulo);
+    $("ar-crear-variantes").addEventListener("click", crearVariantes);
+    $("ar-nc-agregar").addEventListener("click", colorNuevo);
+    $("planilla-completa").addEventListener("click", () => pantallaCompleta());
+    document.addEventListener("keydown", e => {
+      if (e.key === "Escape" && !e.defaultPrevented && $("vista-planilla").classList.contains("pantalla-completa") && !document.querySelector("dialog[open]")) pantallaCompleta(false);
+    });
+    document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement) pantallaCompleta(false); });
+    window.addEventListener("hashchange", () => pantallaCompleta(false));
     $("seleccion-marcar").addEventListener("click", () => marcarElegidos(true));
     $("seleccion-desmarcar").addEventListener("click", () => marcarElegidos(false));
     $("seleccion-limpiar").addEventListener("click", () => { seleccion.clear(); ultimoClic = null; pintar(); });
@@ -342,7 +430,7 @@
       }
     });
     tabla.addEventListener("click", e => {
-      if (!editable()) return;
+      if (!editable() || e.target.closest("a")) return; // los enlaces (buscar en la web) hacen lo suyo
       const sel = e.target.closest("input.sel:not(#sel-todas)");
       if (sel) return elegir(sel, e.shiftKey);
       const desc = e.target.closest("td.celda-desc");

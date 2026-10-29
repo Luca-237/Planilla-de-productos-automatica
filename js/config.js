@@ -13,4 +13,7 @@ window.COMPRAS_CONFIG = {
   funcionUsuarios: "admin-usuarios",
   // A partir de cuántos días sin llegar una línea se marca en rojo
   diasAlerta: 15,
+  // Búsqueda de un artículo en la web de Cindy (botón junto a la descripción). {codigo} se reemplaza solo.
+  // Cuando la tienda pase a Tiendanube: https://cindymayorista2.mitiendanube.com/search/?q={codigo}
+  urlBusquedaWeb: "https://www.cindymayorista.com.ar/resultado-busqueda.htm?keywords={codigo}",
 };

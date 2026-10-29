@@ -11,6 +11,7 @@
     planilla: () => R.vistaPlanilla,
     documentos: () => R.vistaDocumentos,
     proveedores: () => R.vistaProveedores,
+    colores: () => R.vistaColores,
     usuarios: () => R.vistaUsuarios,
   };
   let vistaActual = null;
@@ -81,7 +82,13 @@
     Object.values(VISTAS).forEach(v => v().iniciar());
 
     window.addEventListener("hashchange", () => { if (R.estado.perfil) ir(); });
-    $("btn-menu").addEventListener("click", () => $("lateral").classList.toggle("abierto"));
+    // Menú: en celular se abre encima; en compu se repliega para ganar ancho (queda guardado en el navegador)
+    try { if (localStorage.getItem("compras-lateral") === "oculto") $("app").classList.add("sin-lateral"); } catch (e) {}
+    $("btn-menu").addEventListener("click", () => {
+      if (window.matchMedia("(max-width: 900px)").matches) return $("lateral").classList.toggle("abierto");
+      const oculto = $("app").classList.toggle("sin-lateral");
+      try { localStorage.setItem("compras-lateral", oculto ? "oculto" : "visible"); } catch (e) {}
+    });
 
     // Si la sesión se cierra o vence (en esta pestaña o en otra), volver al login
     R.api.auth.alCambiar(evento => {

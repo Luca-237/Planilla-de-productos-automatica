@@ -233,6 +233,57 @@ test('casillas en varios artículos juntos: carga las cambia y la base devuelve 
   assert.deepEqual(await como(U.consulta, "select distinct foto from public.v_planilla where orden = '0001-00000040'"), [{ foto: true }]);
 });
 
+test('variantes por color: se crean con el sufijo, salen debajo del padre y no se repiten', async () => {
+  await cargarOC(oc('0001-00000050', '2026-10-01', [['V100', 10], ['V200', 4]]));
+  const ids = cods => `array(select id from public.colores where codigo in (${cods.map(c => "'" + c + "'").join(",")}))`;
+  const crear = (usuario, padre, cods) => como(usuario, `select public.crear_variantes('${padre}', ${ids(cods)}) as r`).then(f => f[0].r);
+  // catálogo cargado y protegido
+  assert.equal((await como(U.consulta, "select count(*)::int as n from public.colores"))[0].n, 8);
+  await assert.rejects(como(U.consulta, "insert into public.colores (codigo, nombre) values ('AZU', 'Azul')"), /row-level security/);
+  await assert.rejects(como(U.carga, "insert into public.colores (codigo, nombre) values ('x', 'malo')"), /check/);
+  await como(U.carga, "insert into public.colores (codigo, nombre) values ('CEL', 'Celeste')");
+  // crear
+  await assert.rejects(crear(U.consulta, 'V100', ['WHI']), /No tenés permiso/);
+  const r1 = await crear(U.carga, 'V100', ['WHI', 'GRE', 'CEL']);
+  assert.deepEqual(r1, { creadas: ['V100-CEL', 'V100-GRE', 'V100-WHI'], existentes: [], omitidas: [] });
+  const r2 = await crear(U.carga, 'V100', ['WHI', 'BLU']);
+  assert.deepEqual([r2.creadas, r2.existentes], [['V100-BLU'], ['V100-WHI']]);
+  await assert.rejects(crear(U.carga, 'V100-WHI', ['BLU']), /no puede tener variantes/);
+  await assert.rejects(crear(U.carga, 'NOEXISTE', ['BLU']), /no existe/);
+  // un código que ya existe como otro artículo no se pisa
+  await como(U.carga, "insert into public.articulos (codigo, descripcion) values ('V200-NEG', 'otro')");
+  assert.deepEqual((await crear(U.carga, 'V200', ['NEG'])).omitidas, ['V200-NEG']);
+  // la planilla: padre, sus variantes, y después el otro artículo
+  const filas = await como(U.consulta, "select codigo, es_variante, color, cantidad::float8 as cantidad, n_variantes, padre, descripcion_web from public.v_planilla where orden = '0001-00000050' order by padre, es_variante, codigo");
+  assert.deepEqual(filas.map(f => f.codigo), ['V100', 'V100-BLU', 'V100-CEL', 'V100-GRE', 'V100-WHI', 'V200']);
+  assert.deepEqual(filas[0], { codigo: 'V100', es_variante: false, color: null, cantidad: 10, n_variantes: 4, padre: 'V100', descripcion_web: '' });
+  assert.deepEqual(filas[4], { codigo: 'V100-WHI', es_variante: true, color: 'Blanco', cantidad: null, n_variantes: 0, padre: 'V100', descripcion_web: '' });
+  const padre = (await como(U.consulta, "select tipo, variantes from public.articulos where codigo = 'V100'"))[0];
+  assert.deepEqual(padre, { tipo: 'PADRE', variantes: 'BLU, CEL, GRE, WHI' });
+  assert.equal((await como(U.consulta, "select descripcion from public.articulos where codigo = 'V100-GRE'"))[0].descripcion, 'ART V100 VERDE');
+  // cada variante tiene sus propias casillas
+  await como(U.carga, "update public.articulos set foto = true where codigo = 'V100-WHI'");
+  assert.deepEqual(await como(U.consulta, "select codigo, foto from public.v_planilla where codigo in ('V100', 'V100-WHI') order by codigo"), [{ codigo: 'V100', foto: false }, { codigo: 'V100-WHI', foto: true }]);
+});
+
+test('fecha de alta en la web: se completa sola al tildar "Cargado web" y no se pisa', async () => {
+  await cargarOC(oc('0001-00000051', '2026-10-01', [['F1', 1], ['F2', 1]]));
+  const fecha = codigo => como(U.consulta, `select fecha_alta_web::text as f, public.hoy()::text as hoy from public.articulos where codigo = '${codigo}'`).then(f => f[0]);
+  assert.equal((await fecha('F1')).f, null);
+  await como(U.carga, "update public.articulos set cargado_web = true where codigo = 'F1'");
+  const a = await fecha('F1');
+  assert.equal(a.f, a.hoy);
+  // una fecha puesta a mano no se pisa; destildar y volver a tildar tampoco
+  await como(U.carga, "update public.articulos set cargado_web = true, fecha_alta_web = '2026-05-02' where codigo = 'F2'");
+  assert.equal((await fecha('F2')).f, '2026-05-02');
+  await como(U.carga, "update public.articulos set cargado_web = false where codigo = 'F1'");
+  await como(U.carga, "update public.articulos set cargado_web = true where codigo = 'F1'");
+  assert.equal((await fecha('F1')).f, a.hoy);
+  // otros cambios no tocan la fecha
+  await como(U.carga, "update public.articulos set foto = true where codigo = 'F2'");
+  assert.equal((await fecha('F2')).f, '2026-05-02');
+});
+
 test('preferencias: cada uno guarda y ve solo las suyas', async () => {
   await como(U.carga, "insert into public.preferencias (columnas_ocultas) values ('{foto,catalogo}')");
   await como(U.consulta, "insert into public.preferencias (columnas_ocultas) values ('{precio_unitario}')");

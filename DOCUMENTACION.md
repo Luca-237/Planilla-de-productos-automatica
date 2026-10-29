@@ -28,6 +28,24 @@ Botón redondo en la barra de arriba (y en la pantalla de ingreso) que pasa por 
 - En `css/app.css` los colores salen de tokens en `:root`; el modo oscuro los redefine en `:root[data-tema="oscuro"]` y, para el automático, dentro de `@media (prefers-color-scheme: dark)` (los dos bloques tienen los mismos valores).
 - Tokens que importan al agregar estilos: `--blanco` es el **fondo de las cajas** y `--negro` el **texto fuerte** (en oscuro se invierten); para letras sobre naranja usar `--sobre-naranja` (siempre blanco); para letras naranjas, `--naranja-texto`; verdes, grises y selección: `--verde`, `--verde-suave`, `--tenue`, `--linea-suave`, `--seleccion`. No usar colores fijos.
 
+### Variantes por color
+Un artículo (`123445`) puede tener variantes por color: `123445-WHI`, `123445-GRE`, `123445-BLU`, `123445-NUD`. Cada variante es **un artículo propio** (sus casillas, su descripción, su fecha de alta) que apunta a su principal (`padre_codigo`) y a un color del catálogo.
+- **Crear:** en la Planilla, clic en el artículo → bloque **Variantes por color** → se tildan los colores y **Crear variantes elegidas**. Ahí mismo se puede **agregar un color nuevo** al catálogo (sufijo + nombre) y queda tildado. Si el código ya existe como otro artículo, no lo pisa y avisa.
+- **Colores:** sección **Colores** del menú. Se cargan una vez y sirven para cualquier producto. El **sufijo** (2 a 5 letras o números) no se puede cambiar porque ya forma parte del código de las variantes; el nombre sí, y se puede desactivar un color sin tocar las variantes ya creadas. Vienen cargados WHI Blanco, GRE Verde, BLU Azul, NUD Nude, NEG Negro, BEI Beige, SUE Suela y ROJ Rojo (los últimos cuatro salen de la planilla vieja; si GRE era gris, se renombra).
+- **En la planilla** cada variante sale **debajo de su artículo**, sangrada, con su color y sin cantidades (se piden y llegan por el principal). El principal muestra "N variantes". Una variante no puede tener variantes.
+- En la base: tabla `colores`, `articulos.color_id`, función `crear_variantes(padre, colores)` y `v_planilla` con `padre`, `es_variante`, `n_variantes`, `color`.
+
+### Fecha de alta automática
+Al tildar **Cargado web** (en la tabla, en bloque o en el diálogo) la base completa sola la fecha de alta con el día de hoy (hora de Argentina). Solo si estaba vacía: una fecha puesta a mano no se pisa, y destildar y volver a tildar tampoco la cambia. Sigue siendo editable en el diálogo por si hay que corregirla.
+
+### Menú replegable y pantalla completa
+- El botón de las tres rayas de la barra **repliega el menú** en compu (queda guardado en el navegador, clave `compras-lateral`); en celular lo abre encima, como antes.
+- En la Planilla, **Pantalla completa** tapa menú y barra con la tabla y, si el navegador lo permite, pasa también a pantalla completa de verdad. **Esc** sale.
+
+### Buscar en la web desde la planilla
+Junto a la descripción de un artículo que ya está **Cargado web** aparece un botón con una lupa (y otro "Buscar en la web" en la ventanita de descripción) que abre en otra pestaña la búsqueda de ese código en la página de Cindy. La dirección sale de `urlBusquedaWeb` en `js/config.js`: cuando la tienda pase a Tiendanube se cambia ahí.
+**Importante:** es un enlace, no el script automático. Buscar solo en el navegador no puede leer la página de Cindy (el navegador lo bloquea), ni confirmar que el código está, ni sacar medidas con Google Lens. Para eso hace falta un servicio aparte (por ejemplo una función de Supabase que consulte la tienda); queda como siguiente paso.
+
 ### Nombre corto del proveedor
 Al lado de cada código se muestra el nombre con el que se conoce al proveedor en Cindy (Target, Bagcherry, Lesedife), no la razón social de Manager (Bagcherry figura como "ZUKI S.R.L."). No se puede sacar solo de la razón social, así que se carga **una vez por proveedor**:
 - al guardar el primer documento de un proveedor nuevo, la tarjeta lo pide ("¿Cómo le dicen a este proveedor?");

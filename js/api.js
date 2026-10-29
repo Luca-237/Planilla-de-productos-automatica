@@ -5,7 +5,7 @@
 // =====================================================================
 (function (R) {
   // Datos web del artículo que se pueden editar desde la planilla
-  const CAMPOS_ARTICULO = ["tipo", "padre_codigo", "variantes", "cod_barra", "foto", "descripcion_ok", "cargado_web", "catalogo",
+  const CAMPOS_ARTICULO = ["tipo", "padre_codigo", "cod_barra", "foto", "descripcion_ok", "cargado_web", "catalogo",
     "fecha_alta_web", "sin_stock", "observaciones", "titulo_web", "descripcion_web", "estado_descripcion", "ya_no_esta"];
   let sb = null;
 
@@ -34,6 +34,8 @@
     if (/JWT expired/i.test(m)) return "La sesión venció. Volvé a ingresar.";
     if (/violates foreign key/i.test(m)) return "No se puede: hay datos relacionados que dependen de esto.";
     if (/cancelada_check|cancelada <= cantidad/i.test(m)) return "No se pueden cancelar más unidades de las pedidas.";
+    if (/colores_codigo_key|duplicate key.*colores/i.test(m)) return "Ya hay un color con ese sufijo.";
+    if (/colores_codigo_check/i.test(m)) return "El sufijo tiene que ser de 2 a 5 letras o números, sin espacios (ej. WHI).";
     return m;
   }
 
@@ -84,7 +86,7 @@
   const vistas = {
     pendientes: () => todo(() => sb.from("v_pendientes").select("*").order("fecha_orden").order("orden").order("renglon")).then(numeros),
     lineas: () => todo(() => sb.from("v_oc_lineas").select("*").order("fecha_orden", { ascending: false }).order("orden").order("renglon")).then(numeros),
-    planilla: () => todo(() => sb.from("v_planilla").select("*").order("fecha_orden", { ascending: false }).order("orden").order("codigo")).then(numeros),
+    planilla: () => todo(() => sb.from("v_planilla").select("*").order("fecha_orden", { ascending: false }).order("orden").order("padre").order("es_variante").order("codigo")).then(numeros),
     sobrantes: () => todo(() => sb.from("v_sobrantes").select("*").order("fecha", { ascending: false })).then(numeros),
   };
 
@@ -128,18 +130,34 @@
   const articulos = {
     // Un update sin permiso no da error en Supabase (RLS): cambia 0 filas. Por eso se cuentan.
     async actualizar(codigo, d) {
-      const hechas = chequear(await sb.from("articulos").update(limpiarArticulo(d)).eq("codigo", codigo).select("codigo"));
+      const hechas = chequear(await sb.from("articulos").update(limpiarArticulo(d)).eq("codigo", codigo).select("codigo, fecha_alta_web"));
       if (!hechas.length) throw new Error("No se guardó: no tenés permiso o el artículo ya no existe.");
+      return hechas[0]; // la base puede completar la fecha de alta sola
+    },
+    // Crea las variantes (padre-SUFIJO) con los colores elegidos
+    async crearVariantes(padre, colorIds) {
+      return chequear(await sb.rpc("crear_variantes", { p_padre: padre, p_colores: colorIds }));
     },
     // Marcar o desmarcar una casilla en varios artículos juntos (de a 200 códigos por pedido)
     async actualizarVarios(codigos, d) {
-      const datos = limpiarArticulo(d);
+      const datos = limpiarArticulo(d), todas = [];
       for (let i = 0; i < codigos.length; i += 200) {
         const lote = codigos.slice(i, i + 200);
-        const hechas = chequear(await sb.from("articulos").update(datos).in("codigo", lote).select("codigo"));
+        const hechas = chequear(await sb.from("articulos").update(datos).in("codigo", lote).select("codigo, fecha_alta_web"));
+        todas.push(...hechas);
         if (hechas.length < lote.length) throw new Error(`Se guardaron ${i + hechas.length} de ${codigos.length}: no tenés permiso o algún artículo ya no existe.`);
       }
+      return todas;
     },
+  };
+
+  // ---------- Colores (catálogo para las variantes) ----------
+  const colores = {
+    listar: () => todo(() => sb.from("colores").select("id, codigo, nombre, activo").order("nombre")),
+    async crear(codigo, nombre) {
+      return chequear(await sb.from("colores").insert({ codigo: String(codigo).trim().toUpperCase(), nombre: String(nombre).trim() }).select("id, codigo, nombre, activo").single());
+    },
+    async actualizar(id, d) { chequear(await sb.from("colores").update(d).eq("id", id)); },
   };
 
   // ---------- Preferencias del usuario (columnas ocultas) ----------
@@ -177,5 +195,5 @@
     resetearPassword: (id, password) => usuarios.llamar("resetear_password", { id, password }),
   };
 
-  R.api = { configurado, iniciar, auth, documentos, vistas, ordenes, remitos, proveedores, articulos, preferencias, usuarios };
+  R.api = { configurado, iniciar, auth, documentos, vistas, ordenes, remitos, proveedores, articulos, colores, preferencias, usuarios };
 })(window.COMPRAS);

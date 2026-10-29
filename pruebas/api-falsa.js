@@ -25,6 +25,18 @@
   const articulos = new Map();
   const ordenes = [], lineas = [], remitos = [], remLineas = [], recepciones = [];
   let ocultas = null;
+  // Catálogo de colores (como el de la base)
+  const colores = [["WHI", "Blanco"], ["GRE", "Verde"], ["BLU", "Azul"], ["NUD", "Nude"], ["NEG", "Negro"], ["BEI", "Beige"], ["SUE", "Suela"], ["ROJ", "Rojo"]]
+    .map(([codigo, nombre], i) => ({ id: i + 1, codigo, nombre, activo: true }));
+  const hijos = codigo => [...articulos.values()].filter(a => a.padre_codigo === codigo).sort((a, b) => a.codigo.localeCompare(b.codigo));
+  const colorDe = a => colores.find(c => c.id === a.color_id) || {};
+  // Como el trigger de la base: al marcar "Cargado web" se completa la fecha de alta (solo si estaba vacía)
+  function guardarArticulo(codigo, d) {
+    const a = articulos.get(codigo), antes = a.cargado_web;
+    Object.assign(a, d);
+    if (a.cargado_web && !antes && !a.fecha_alta_web) a.fecha_alta_web = hoyISO();
+    return { codigo, fecha_alta_web: a.fecha_alta_web };
+  }
 
   function proveedor(cuit, nombre) {
     let p = proveedores.find(x => x.cuit === cuit);
@@ -150,9 +162,16 @@
     vistas: {
       pendientes: () => espera(vLineas().filter(v => ["pendiente", "parcial"].includes(v.estado)).sort((a, b) => a.fecha_orden.localeCompare(b.fecha_orden))),
       lineas: () => espera(vLineas()),
-      planilla: () => espera(vLineas().map(v => {
-        const a = articulos.get(v.codigo);
-        return { ...a, ...v, nombre: a.descripcion || v.descripcion, oc_linea_id: v.id };
+      // Cada artículo seguido de sus variantes (que no traen cantidades), como v_planilla
+      planilla: () => espera(vLineas().flatMap(v => {
+        const a = articulos.get(v.codigo), c = colorDe(a);
+        const fila = { ...a, ...v, nombre: a.descripcion || v.descripcion, oc_linea_id: v.id, padre: a.padre_codigo || a.codigo,
+          es_variante: a.tipo === "VARIANTE", n_variantes: hijos(a.codigo).length, color: c.nombre || null, color_codigo: c.codigo || null };
+        const hijas = hijos(a.codigo).map(x => ({ ...x, orden: v.orden, fecha_orden: v.fecha_orden, proveedor: v.proveedor, razon_social: v.razon_social,
+          estado: v.estado, ultima_recepcion: v.ultima_recepcion, dias_desde_orden: v.dias_desde_orden, dias_atraso: v.dias_atraso,
+          cantidad: null, precio_unitario: null, recibido: null, pendiente: null, oc_linea_id: v.id, orden_id: v.orden_id,
+          nombre: x.descripcion, padre: a.codigo, es_variante: true, n_variantes: 0, color: colorDe(x).nombre, color_codigo: colorDe(x).codigo }));
+        return [fila, ...hijas];
       })),
       sobrantes: () => espera(remLineas.map(rl => {
         const m = remitos.find(x => x.id === rl.remito_id);
@@ -191,8 +210,42 @@
       actualizar: async (id, d) => { if (!puedeCargar()) sinPermiso(); proveedores.find(p => p.id === id).nombre_corto = String(d.nombre_corto || "").trim(); },
     },
     articulos: {
-      actualizar: async (codigo, d) => { if (!puedeCargar()) sinPermiso(); Object.assign(articulos.get(codigo), d); },
-      actualizarVarios: async (codigos, d) => { if (!puedeCargar()) sinPermiso(); await espera(null); codigos.forEach(c => Object.assign(articulos.get(c), d)); },
+      actualizar: async (codigo, d) => { if (!puedeCargar()) sinPermiso(); return guardarArticulo(codigo, d); },
+      actualizarVarios: async (codigos, d) => { if (!puedeCargar()) sinPermiso(); await espera(null); return codigos.map(c => guardarArticulo(c, d)); },
+      crearVariantes: async (padre, ids) => {
+        if (!puedeCargar()) throw new Error("No tenés permiso para crear variantes");
+        const p = articulos.get(padre);
+        if (!p) throw new Error("El artículo " + padre + " no existe");
+        if (p.tipo === "VARIANTE") throw new Error("Una variante no puede tener variantes: elegí el artículo principal (" + p.padre_codigo + ")");
+        if (!ids.length) throw new Error("Elegí al menos un color");
+        const creadas = [], existentes = [], omitidas = [];
+        colores.filter(c => ids.includes(c.id)).sort((a, b) => a.codigo.localeCompare(b.codigo)).forEach(c => {
+          const codigo = padre + "-" + c.codigo, ya = articulos.get(codigo);
+          if (ya && ya.padre_codigo === padre && ya.color_id === c.id) existentes.push(codigo);
+          else if (ya) omitidas.push(codigo);
+          else {
+            articulos.set(codigo, { ...p, codigo, descripcion: (p.descripcion + " " + c.nombre.toUpperCase()).trim(), tipo: "VARIANTE", padre_codigo: padre, color_id: c.id,
+              variantes: "", foto: false, descripcion_ok: false, cargado_web: false, catalogo: false, fecha_alta_web: null, sin_stock: false,
+              observaciones: "", titulo_web: "", descripcion_web: "", estado_descripcion: "", ya_no_esta: false });
+            creadas.push(codigo);
+          }
+        });
+        p.tipo = "PADRE";
+        p.variantes = hijos(padre).map(h => colorDe(h).codigo).filter(Boolean).sort().join(", ");
+        await espera(null);
+        return { creadas, existentes, omitidas };
+      },
+    },
+    colores: {
+      listar: () => espera([...colores].sort((a, b) => a.nombre.localeCompare(b.nombre))),
+      crear: async (codigo, nombre) => {
+        if (!puedeCargar()) sinPermiso();
+        codigo = String(codigo).trim().toUpperCase();
+        if (!/^[A-Z0-9]{2,5}$/.test(codigo)) throw new Error("El sufijo tiene que ser de 2 a 5 letras o números, sin espacios (ej. WHI).");
+        if (colores.some(c => c.codigo === codigo)) throw new Error("Ya hay un color con ese sufijo.");
+        const c = { id: nuevoId(), codigo, nombre: String(nombre).trim(), activo: true }; colores.push(c); return copia(c);
+      },
+      actualizar: async (id, d) => { if (!puedeCargar()) sinPermiso(); Object.assign(colores.find(c => c.id === id), d); },
     },
     preferencias: { obtener: () => espera(ocultas), guardar: async c => { ocultas = c; } },
     usuarios: {

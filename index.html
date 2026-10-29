@@ -11,7 +11,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600&family=Lora:ital,wght@0,600;1,500&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%23e84e1b'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='Georgia,serif' font-size='20' fill='%23fff'%3EC%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="css/app.css?v=20261029.6">
+<link rel="stylesheet" href="css/app.css?v=20261029.7">
 </head>
 <body>
 
@@ -84,6 +84,9 @@
     <a href="#proveedores" data-vista="proveedores">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>
       Proveedores<span class="contador" id="contador-proveedores" hidden></span></a>
+    <a href="#colores" data-vista="colores">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
+      Colores</a>
     <a href="#usuarios" data-vista="usuarios" data-solo-admin hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       Usuarios</a>
@@ -141,6 +144,9 @@
       <div class="vista-head">
         <div><h1>Planilla</h1><p class="sub">Una fila por artículo de cada orden de compra, con lo que llegó y los datos de la web.</p></div>
         <div class="controles">
+          <button type="button" class="btn-sec" id="planilla-completa" title="Ocultar el menú y usar toda la pantalla para la planilla (Esc para salir)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+            <span id="planilla-completa-texto">Pantalla completa</span></button>
           <button type="button" class="btn-sec" id="planilla-columnas">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></svg>
             Columnas</button>
@@ -235,6 +241,22 @@
       </div>
     </section>
 
+    <!-- ======== Colores ======== -->
+    <section id="vista-colores" data-seccion hidden>
+      <div class="vista-head">
+        <div><h1>Colores</h1><p class="sub">Catálogo de colores para las variantes. El sufijo se agrega al código: 123445 + WHI = 123445-WHI.</p></div>
+      </div>
+      <div class="caja">
+        <div class="tabla-wrap"><table class="tabla grilla" id="colores-tabla"></table></div>
+        <form class="filtros" id="form-color" style="margin:12px 0 0" data-puede-cargar hidden>
+          <div><label for="nc-codigo">Sufijo<span class="info" tabindex="0" role="img" aria-label="De 2 a 5 letras o números, en mayúsculas. Es lo que se agrega al código del artículo: WHI, BLU, NUD… No se puede cambiar después, porque ya forma parte del código de las variantes creadas." data-info="De 2 a 5 letras o números, en mayúsculas. Es lo que se agrega al código del artículo: WHI, BLU, NUD… No se puede cambiar después, porque ya forma parte del código de las variantes creadas."></span></label><input id="nc-codigo" maxlength="5" placeholder="ej: WHI" style="text-transform:uppercase; width:110px" required></div>
+          <div style="flex:1; min-width:180px"><label for="nc-nombre">Nombre</label><input id="nc-nombre" maxlength="40" placeholder="ej: Blanco" required></div>
+          <button class="btn-sec primario" type="submit">Agregar color</button>
+        </form>
+        <p class="hint">Los colores se cargan una sola vez y sirven para las variantes de cualquier producto. El nombre se puede cambiar; el sufijo no. Un color desactivado deja de ofrecerse, pero las variantes que ya lo usan siguen igual.</p>
+      </div>
+    </section>
+
     <!-- ======== Usuarios (admin) ======== -->
     <section id="vista-usuarios" data-seccion hidden>
       <div class="vista-head"><div><h1>Usuarios</h1><p class="sub">Quién puede entrar y qué puede hacer.</p></div></div>
@@ -280,9 +302,9 @@
         <div class="full"><label for="ar-titulo_web">Título web</label><input id="ar-titulo_web"></div>
         <div class="full"><label for="ar-descripcion_web">Descripción web</label><textarea id="ar-descripcion_web" rows="7"></textarea></div>
         <div><label for="ar-tipo">Tipo</label><select id="ar-tipo"><option value="PADRE">Padre</option><option value="VARIANTE">Variante</option><option value="INDIVIDUAL">Individual</option></select></div>
-        <div><label for="ar-variantes">Variantes</label><input id="ar-variantes"></div>
+        <div><label for="ar-color">Color</label><input id="ar-color" readonly placeholder="—"></div>
         <div><label for="ar-cod_barra">Código de barras</label><input id="ar-cod_barra"></div>
-        <div><label for="ar-fecha_alta_web">Fecha alta web</label><input id="ar-fecha_alta_web" type="date"></div>
+        <div><label for="ar-fecha_alta_web">Fecha alta web<span class="info" tabindex="0" role="img" aria-label="Se completa sola el día que se marca Cargado web. Solo hace falta tocarla para corregirla." data-info="Se completa sola el día que se marca Cargado web. Solo hace falta tocarla para corregirla."></span></label><input id="ar-fecha_alta_web" type="date"></div>
         <div class="full" style="display:flex; gap:16px; flex-wrap:wrap">
           <label class="check"><input type="checkbox" id="ar-foto"> Foto</label>
           <label class="check"><input type="checkbox" id="ar-descripcion_ok"> Descripción OK</label>
@@ -292,6 +314,20 @@
           <label class="check"><input type="checkbox" id="ar-ya_no_esta"> Ya no está en la página</label>
         </div>
         <div class="full"><label for="ar-observaciones">Observaciones</label><textarea id="ar-observaciones" rows="2"></textarea></div>
+        <div class="full caja-variantes" id="ar-variantes-caja">
+          <h2>Variantes por color<span class="info" tabindex="0" role="img" aria-label="Cada color crea un artículo propio con el código del principal más el sufijo (123445-WHI), con sus propias casillas y descripción. Los colores salen del catálogo y se reutilizan en todos los productos." data-info="Cada color crea un artículo propio con el código del principal más el sufijo (123445-WHI), con sus propias casillas y descripción. Los colores salen del catálogo y se reutilizan en todos los productos."></span></h2>
+          <div id="ar-variantes-lista" class="chips-variantes"></div>
+          <div id="ar-variantes-nueva" data-puede-cargar>
+            <label>Agregar variantes: elegí los colores</label>
+            <div id="ar-colores" class="lista-colores"></div>
+            <div class="filtros" style="margin:8px 0 0">
+              <div><label for="ar-nc-codigo">Color nuevo: sufijo</label><input id="ar-nc-codigo" maxlength="5" placeholder="ej: NUD" style="text-transform:uppercase; width:100px"></div>
+              <div style="flex:1; min-width:140px"><label for="ar-nc-nombre">Nombre</label><input id="ar-nc-nombre" maxlength="40" placeholder="ej: Nude"></div>
+              <button type="button" class="btn-sec" id="ar-nc-agregar">Agregar al catálogo</button>
+            </div>
+            <div class="dlg-pie" style="margin-top:10px"><button type="button" class="btn-sec primario" id="ar-crear-variantes">Crear variantes elegidas</button></div>
+          </div>
+        </div>
       </div>
       <div class="dlg-pie">
         <button type="button" class="btn-sec" data-cerrar>Cancelar</button>
@@ -343,7 +379,7 @@
 
 <!-- ============ Ventanita: descripción web rápida (se abre sobre la celda) ============ -->
 <div class="pop-desc" id="pop-desc" role="dialog" aria-labelledby="pop-desc-titulo" hidden>
-  <div class="pop-desc-titulo" id="pop-desc-titulo"></div>
+  <div class="pop-desc-cab"><div class="pop-desc-titulo" id="pop-desc-titulo"></div><a class="btn-sec buscar-web" id="pop-desc-web" target="_blank" rel="noopener" hidden>Buscar en la web</a></div>
   <textarea id="pop-desc-texto" rows="7" placeholder="Escribí o pegá la descripción web…"></textarea>
   <label class="check" style="margin-top:6px"><input type="checkbox" id="pop-desc-ok"> Marcar "Descripción OK"</label>
   <div class="pop-desc-pie">
@@ -359,19 +395,20 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
-<script src="js/config.js?v=20261029.6"></script>
-<script src="js/utils.js?v=20261029.6"></script>
-<script src="js/lector-manager.js?v=20261029.6"></script>
-<script src="js/api.js?v=20261029.6"></script>
+<script src="js/config.js?v=20261029.7"></script>
+<script src="js/utils.js?v=20261029.7"></script>
+<script src="js/lector-manager.js?v=20261029.7"></script>
+<script src="js/api.js?v=20261029.7"></script>
 
-<script src="js/vistas/acceso.js?v=20261029.6"></script>
-<script src="js/vistas/pendientes.js?v=20261029.6"></script>
-<script src="js/vistas/cargar.js?v=20261029.6"></script>
-<script src="js/vistas/planilla.js?v=20261029.6"></script>
-<script src="js/vistas/proveedores.js?v=20261029.6"></script>
-<script src="js/vistas/documentos.js?v=20261029.6"></script>
-<script src="js/vistas/usuarios.js?v=20261029.6"></script>
+<script src="js/vistas/acceso.js?v=20261029.7"></script>
+<script src="js/vistas/pendientes.js?v=20261029.7"></script>
+<script src="js/vistas/cargar.js?v=20261029.7"></script>
+<script src="js/vistas/planilla.js?v=20261029.7"></script>
+<script src="js/vistas/colores.js?v=20261029.7"></script>
+<script src="js/vistas/proveedores.js?v=20261029.7"></script>
+<script src="js/vistas/documentos.js?v=20261029.7"></script>
+<script src="js/vistas/usuarios.js?v=20261029.7"></script>
 
-<script src="js/main.js?v=20261029.6"></script>
+<script src="js/main.js?v=20261029.7"></script>
 </body>
 </html>

@@ -69,7 +69,7 @@ input[type=checkbox] { accent-color:var(--naranja); width:auto; }
 .usuario { display:flex; align-items:center; gap:10px; font-size:13px; }
 .usuario .rol { display:inline-block; margin-left:4px; padding:1px 6px; border-radius:2px; font-size:10px; letter-spacing:.12em; text-transform:uppercase; background:var(--negro); color:var(--blanco); }
 .usuario .rol.admin { background:var(--naranja); color:var(--sobre-naranja); }
-.btn-menu { display:none; border:0; background:none; padding:4px; cursor:pointer; color:var(--negro); }
+.btn-menu { display:block; border:0; background:none; padding:4px; cursor:pointer; color:var(--negro); }
 .btn-menu svg { width:24px; height:24px; display:block; }
 
 .lateral { background:var(--blanco); border-right:1px solid var(--linea); padding:16px 0; position:sticky; top:65px; align-self:start; height:calc(100vh - 65px); overflow:auto; }
@@ -303,3 +303,41 @@ dialog.dlg::backdrop { background:rgba(0,0,0,.4); }
 .tabla tr.sin-nombre td:first-child { box-shadow:inset 3px 0 0 var(--naranja); }
 .nombre-prov { font-weight:600; color:var(--negro); }
 .aviso-proveedores svg { width:18px; height:18px; flex:none; }
+
+/* ---------- Menú replegable (compu) ---------- */
+@media (min-width: 901px) {
+  .app.sin-lateral { grid-template-columns:1fr; }
+  .app.sin-lateral .lateral { display:none; }
+}
+
+/* ---------- Planilla en pantalla completa ---------- */
+body.sin-scroll { overflow:hidden; }
+#vista-planilla.pantalla-completa { position:fixed; inset:0; z-index:40; display:flex; flex-direction:column; padding:14px 18px; background:var(--fondo); overflow:hidden; }
+#vista-planilla.pantalla-completa .vista-head { margin-bottom:10px; }
+#vista-planilla.pantalla-completa .vista-head .sub { display:none; }
+#vista-planilla.pantalla-completa > .caja { flex:1; min-height:0; display:flex; flex-direction:column; margin-bottom:0; }
+#vista-planilla.pantalla-completa .tabla-wrap { flex:1; min-height:0; max-height:none; }
+
+/* ---------- Variantes por color ---------- */
+.tabla tr.fila-variante td { background:color-mix(in srgb, var(--naranja) 4%, transparent); }
+.variante-cod { display:block; padding-left:12px; border-left:2px solid var(--naranja); }
+.tag-var, .tag-color { display:inline-block; margin-left:6px; padding:1px 6px; border-radius:2px; font-size:11px; font-weight:600; white-space:nowrap; vertical-align:1px; }
+.tag-var { background:var(--linea); color:var(--texto); }
+.tag-color { background:var(--naranja-suave); color:var(--naranja-texto); }
+.caja-variantes { margin-top:6px; padding-top:6px; border-top:1px solid var(--linea); }
+.chips-variantes { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+.chip-var { display:inline-flex; align-items:center; gap:6px; padding:3px 8px; border:1px solid var(--linea); border-radius:12px; font-size:13px; font-weight:600; }
+.chip-var small { color:var(--muted); font-weight:400; }
+.lista-colores { display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:0 12px; margin-top:4px; }
+.lista-colores label.check { margin:0; padding:5px 0; }
+.lista-colores small { color:var(--muted); }
+
+/* ---------- Buscar en la web, junto a la descripción ---------- */
+.desc-fila { display:flex; align-items:flex-start; gap:6px; }
+.desc-fila > span { flex:1; min-width:0; }
+.buscar-web-mini { flex:none; display:inline-grid; place-items:center; width:24px; height:24px; border:1px solid var(--linea); border-radius:50%; color:var(--naranja-texto); background:var(--blanco); }
+.buscar-web-mini:hover { background:var(--naranja); border-color:var(--naranja); color:var(--sobre-naranja); }
+.buscar-web-mini svg { width:13px; height:13px; }
+.pop-desc-cab { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+.pop-desc-cab .pop-desc-titulo { margin-bottom:8px; }
+.buscar-web { flex:none; padding:5px 10px; font-size:12px; text-decoration:none; }
