@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<!-- Tema elegido (claro/oscuro) antes de dibujar, para que no parpadee. Sin elegir = como el sistema -->
+<script>try { var t = localStorage.getItem("compras-tema"); if (t === "claro" || t === "oscuro") document.documentElement.dataset.tema = t; } catch (e) {}</script>
+<title>Compras · Cindy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600&family=Lora:ital,wght@0,600;1,500&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%23e84e1b'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='Georgia,serif' font-size='20' fill='%23fff'%3EC%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/app.css?v=20261029.6">
+</head>
+<body>
+
+<!-- ============ Falta configurar la conexión ============ -->
+<section class="pantalla" id="pantalla-config" hidden>
+  <button type="button" class="btn-tema" data-tema-boton aria-label="Tema: automático" title="Tema: automático"></button>
+  <div class="tarjeta">
+    <header class="marca">
+      <span class="isotipo" aria-hidden="true">C</span>
+      <span><span class="titulo">Compras</span><span class="sub">Cindy Mayorista · Mercadería</span></span>
+    </header>
+    <p><strong>Falta conectar la base de datos.</strong></p>
+    <p>Completá <code>supabaseUrl</code> y <code>supabaseKey</code> en <code>js/config.js</code> y recargá la página.</p>
+    <p>El paso a paso está en <code>SUPABASE-SETUP.md</code>.</p>
+  </div>
+</section>
+
+<!-- ============ Cargando ============ -->
+<section class="pantalla" id="pantalla-carga">
+  <p class="cargando">Cargando…</p>
+</section>
+
+<!-- ============ Login ============ -->
+<section class="pantalla" id="pantalla-login" hidden>
+  <button type="button" class="btn-tema" data-tema-boton aria-label="Tema: automático" title="Tema: automático"></button>
+  <form class="tarjeta" id="form-login" autocomplete="on">
+    <header class="marca">
+      <span class="isotipo" aria-hidden="true">C</span>
+      <span><span class="titulo">Compras</span><span class="sub">Cindy Mayorista · Mercadería</span></span>
+    </header>
+    <label for="login-email">Usuario o email</label>
+    <input id="login-email" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" required>
+    <label for="login-password">Contraseña</label>
+    <input id="login-password" type="password" autocomplete="current-password" required>
+    <button class="btn" id="login-btn" type="submit">Ingresar</button>
+    <div class="mensaje-error" id="login-error" role="alert"></div>
+  </form>
+</section>
+
+<!-- ============ Aplicación ============ -->
+<div class="app" id="app" hidden>
+  <header class="barra">
+    <button type="button" class="btn-menu" id="btn-menu" aria-label="Abrir menú">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+    </button>
+    <div class="marca">
+      <span class="isotipo" aria-hidden="true">C</span>
+      <span><span class="titulo">Compras</span><span class="sub">Cindy Mayorista · Mercadería</span></span>
+    </div>
+    <button type="button" class="btn-tema" data-tema-boton aria-label="Tema: automático" title="Tema: automático"></button>
+    <div class="usuario">
+      <span class="quien"><span id="usuario-nombre"></span><span class="rol" id="usuario-rol"></span></span>
+      <button type="button" class="link" id="salir">Salir</button>
+    </div>
+  </header>
+
+  <nav class="lateral" id="lateral" aria-label="Secciones">
+    <a href="#pendientes" data-vista="pendientes">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      Pendientes</a>
+    <a href="#cargar" data-vista="cargar" data-puede-cargar hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+      Cargar documentos</a>
+    <a href="#planilla" data-vista="planilla">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/></svg>
+      Planilla</a>
+    <a href="#documentos" data-vista="documentos">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
+      Órdenes y remitos</a>
+    <a href="#proveedores" data-vista="proveedores">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>
+      Proveedores<span class="contador" id="contador-proveedores" hidden></span></a>
+    <a href="#usuarios" data-vista="usuarios" data-solo-admin hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Usuarios</a>
+  </nav>
+
+  <main class="contenido">
+    <!-- ======== Pendientes ======== -->
+    <section id="vista-pendientes" data-seccion>
+      <div class="vista-head">
+        <div><h1>Pendientes</h1><p class="sub">Lo que se pidió en una orden de compra y todavía no llegó.</p></div>
+        <div class="controles">
+          <button type="button" class="btn-sec" id="pendientes-csv">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+            Exportar</button>
+        </div>
+      </div>
+      <div class="kpis" id="pendientes-kpis"></div>
+      <div class="caja">
+        <div class="filtros">
+          <div style="flex:1; min-width:220px"><label for="pendientes-buscar">Buscar</label>
+            <div class="buscar-wrap">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input id="pendientes-buscar" placeholder="Código, descripción, OC o proveedor">
+            </div>
+          </div>
+          <div><label for="pendientes-proveedor">Proveedor</label><select id="pendientes-proveedor"></select></div>
+          <div><label class="check" style="margin:0 0 8px"><input type="checkbox" id="pendientes-atrasados"> Solo atrasados</label></div>
+        </div>
+        <div class="tabla-wrap"><table class="tabla grilla con-nombre" id="pendientes-tabla"></table></div>
+        <p class="hint" id="pendientes-pie"></p>
+      </div>
+      <div class="caja" id="sobrantes-caja" hidden>
+        <h2>Llegó sin orden de compra<span class="info" tabindex="0" role="img" aria-label="Unidades de un remito que no tenían una OC abierta de ese proveedor con ese código: mercadería que no se pidió, que llegó de más o con un código distinto al de la OC." data-info="Unidades de un remito que no tenían una OC abierta de ese proveedor con ese código: mercadería que no se pidió, que llegó de más o con un código distinto al de la OC."></span></h2>
+        <div class="tabla-wrap"><table class="tabla grilla" id="sobrantes-tabla"></table></div>
+      </div>
+    </section>
+
+    <!-- ======== Cargar documentos ======== -->
+    <section id="vista-cargar" data-seccion hidden>
+      <div class="vista-head">
+        <div><h1>Cargar documentos</h1><p class="sub">Órdenes de compra y remitos de ingreso exportados de Manager (.xls).</p></div>
+      </div>
+      <label class="zona-carga" id="zona-carga" for="cargar-archivos">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+        <strong>Arrastrá los archivos acá o hacé clic para elegirlos</strong>
+        <small>Se pueden subir varios a la vez. Primero se muestra cómo va a quedar; no se guarda nada hasta que confirmes.</small>
+        <input type="file" id="cargar-archivos" accept=".xls,.xlsx" multiple>
+      </label>
+      <p class="hint">Conviene subir primero las órdenes de compra y después los remitos: el remito se cruza con las OC que ya están cargadas.</p>
+      <div id="cargar-lista" style="margin-top:18px"></div>
+    </section>
+
+    <!-- ======== Planilla ======== -->
+    <section id="vista-planilla" data-seccion hidden>
+      <div class="vista-head">
+        <div><h1>Planilla</h1><p class="sub">Una fila por artículo de cada orden de compra, con lo que llegó y los datos de la web.</p></div>
+        <div class="controles">
+          <button type="button" class="btn-sec" id="planilla-columnas">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></svg>
+            Columnas</button>
+          <button type="button" class="btn-sec" id="planilla-csv">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+            Exportar</button>
+        </div>
+      </div>
+      <div class="caja">
+        <div class="filtros">
+          <div style="flex:1; min-width:220px"><label for="planilla-buscar">Buscar</label>
+            <div class="buscar-wrap">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input id="planilla-buscar" placeholder="Código, nombre, OC o proveedor">
+            </div>
+          </div>
+          <div><label for="planilla-proveedor">Proveedor</label><select id="planilla-proveedor"></select></div>
+          <div><label for="planilla-estado">Estado</label><select id="planilla-estado"></select></div>
+          <div><label for="planilla-falta">Mostrar</label>
+            <select id="planilla-falta">
+              <option value="">Todos</option>
+              <option value="foto">Sin foto</option>
+              <option value="descripcion_ok">Sin descripción OK</option>
+              <option value="cargado_web">No cargados en la web</option>
+              <option value="catalogo">Sin catálogo</option>
+              <option value="sin_stock">Marcados sin stock</option>
+              <option value="ya_no_esta">Ya no están en la página</option>
+            </select></div>
+        </div>
+        <div class="barra-seleccion" id="planilla-seleccion" hidden>
+          <strong id="seleccion-cuantos"></strong>
+          <select id="seleccion-campo" aria-label="Qué marcar">
+            <option value="foto">Foto</option>
+            <option value="descripcion_ok">Descripción OK</option>
+            <option value="sin_stock">Sin stock</option>
+            <option value="cargado_web">Cargado web</option>
+            <option value="catalogo">Catálogo</option>
+            <option value="ya_no_esta">Ya no está en la página</option>
+          </select>
+          <button type="button" class="btn-sec primario" id="seleccion-marcar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            Marcar</button>
+          <button type="button" class="btn-sec" id="seleccion-desmarcar">Desmarcar</button>
+          <button type="button" class="link" id="seleccion-limpiar">Quitar selección</button>
+        </div>
+        <div class="tabla-wrap"><table class="tabla grilla" id="planilla-tabla"></table></div>
+        <p class="hint" id="planilla-pie"></p>
+      </div>
+    </section>
+
+    <!-- ======== Órdenes y remitos ======== -->
+    <section id="vista-documentos" data-seccion hidden>
+      <div class="vista-head"><div><h1>Órdenes y remitos</h1><p class="sub">Todo lo que se cargó. Clic en una orden para ver el detalle, cerrarla o cancelar unidades.</p></div></div>
+      <div class="caja">
+        <h2>Órdenes de compra</h2>
+        <div class="filtros">
+          <div style="flex:1; min-width:220px"><label for="ordenes-buscar">Buscar</label>
+            <div class="buscar-wrap">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input id="ordenes-buscar" placeholder="Número o proveedor">
+            </div>
+          </div>
+          <div><label for="ordenes-estado">Mostrar</label>
+            <select id="ordenes-estado"><option value="abiertas">Con pendientes</option><option value="">Todas</option><option value="completas">Completas o cerradas</option></select></div>
+        </div>
+        <div class="tabla-wrap"><table class="tabla grilla" id="ordenes-tabla"></table></div>
+      </div>
+      <div class="caja">
+        <h2>Remitos de ingreso</h2>
+        <div class="tabla-wrap"><table class="tabla grilla" id="remitos-tabla"></table></div>
+      </div>
+    </section>
+
+    <!-- ======== Proveedores ======== -->
+    <section id="vista-proveedores" data-seccion hidden>
+      <div class="vista-head">
+        <div><h1>Proveedores</h1><p class="sub">Con qué nombre se muestra cada proveedor al lado del código de los artículos.</p></div>
+      </div>
+      <div class="aviso-proveedores" id="proveedores-aviso" hidden></div>
+      <div class="caja">
+        <div class="filtros">
+          <div style="flex:1; min-width:220px"><label for="proveedores-buscar">Buscar</label>
+            <div class="buscar-wrap">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input id="proveedores-buscar" placeholder="Nombre, razón social o CUIT">
+            </div>
+          </div>
+          <div><label class="check" style="margin:0 0 8px"><input type="checkbox" id="proveedores-sin-nombre"> Solo sin nombre</label></div>
+        </div>
+        <div class="tabla-wrap"><table class="tabla grilla" id="proveedores-tabla"></table></div>
+        <p class="hint">Los proveedores se registran solos al cargar su primera orden de compra o remito, con la razón social de Manager. El nombre se puede cambiar cuando quieras: se actualiza en toda la página al instante, también en lo que ya está cargado.</p>
+      </div>
+    </section>
+
+    <!-- ======== Usuarios (admin) ======== -->
+    <section id="vista-usuarios" data-seccion hidden>
+      <div class="vista-head"><div><h1>Usuarios</h1><p class="sub">Quién puede entrar y qué puede hacer.</p></div></div>
+      <div class="caja">
+        <div class="tabla-wrap"><table class="tabla"><thead><tr><th>Usuario</th><th>Rol<span class="info" tabindex="0" role="img" aria-label="Admin: todo, incluidos usuarios y borrar un documento cargado por error. Carga: sube órdenes de compra y remitos, cierra órdenes, cancela unidades y edita los datos web. Consulta: solo mira." data-info="Admin: todo, incluidos usuarios y borrar un documento cargado por error. Carga: sube órdenes de compra y remitos, cierra órdenes, cancela unidades y edita los datos web. Consulta: solo mira."></span></th><th>Estado</th><th></th></tr></thead><tbody id="tabla-usuarios"></tbody></table></div>
+        <form class="form-grid" id="form-usuario" autocomplete="off" style="margin-top:12px; padding:12px; background:var(--fondo); border-radius:3px">
+          <div class="full"><strong style="font-size:14px">Nuevo usuario</strong></div>
+          <div><label for="nu-nombre">Nombre</label><input id="nu-nombre" required></div>
+          <div><label for="nu-usuario">Usuario (o email)<span class="info" tabindex="0" role="img" aria-label="Con un nombre (ej. antonella) se ingresa con ese nombre; no hace falta un email real. También se puede poner un email completo." data-info="Con un nombre (ej. antonella) se ingresa con ese nombre; no hace falta un email real. También se puede poner un email completo."></span></label><input id="nu-usuario" type="text" autocapitalize="off" spellcheck="false" required placeholder="ej: antonella"></div>
+          <div><label for="nu-password">Contraseña inicial</label><input id="nu-password" type="text" minlength="8" required autocomplete="new-password"></div>
+          <div><label for="nu-rol">Rol</label>
+            <select id="nu-rol">
+              <option value="carga">Carga (sube OC y remitos)</option>
+              <option value="consulta">Consulta (solo mira)</option>
+              <option value="admin">Admin (todo, administra usuarios)</option>
+            </select>
+          </div>
+          <div class="full"><button class="btn" id="nu-crear" type="submit" style="margin-top:12px">Crear usuario</button></div>
+          <div class="full mensaje-error" id="usuario-error" role="alert"></div>
+        </form>
+        <p class="hint">La contraseña pasásela en persona o por un medio privado, no por un grupo.</p>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ============ Diálogo: detalle de una orden de compra ============ -->
+<dialog class="dlg ancho" id="dlg-orden">
+  <div class="dlg-head"><h3 id="orden-titulo">Orden de compra</h3>
+    <button type="button" class="btn-cerrar" data-cerrar aria-label="Cerrar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+  </div>
+  <div class="dlg-body" id="orden-cuerpo"></div>
+</dialog>
+
+<!-- ============ Diálogo: datos web de un artículo ============ -->
+<dialog class="dlg" id="dlg-articulo">
+  <form method="dialog" id="form-articulo" autocomplete="off">
+    <div class="dlg-head"><h3 id="articulo-titulo">Artículo</h3>
+      <button type="button" class="btn-cerrar" data-cerrar aria-label="Cerrar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+    </div>
+    <div class="dlg-body">
+      <div class="form-grid">
+        <div class="full"><label for="ar-titulo_web">Título web</label><input id="ar-titulo_web"></div>
+        <div class="full"><label for="ar-descripcion_web">Descripción web</label><textarea id="ar-descripcion_web" rows="7"></textarea></div>
+        <div><label for="ar-tipo">Tipo</label><select id="ar-tipo"><option value="PADRE">Padre</option><option value="VARIANTE">Variante</option><option value="INDIVIDUAL">Individual</option></select></div>
+        <div><label for="ar-variantes">Variantes</label><input id="ar-variantes"></div>
+        <div><label for="ar-cod_barra">Código de barras</label><input id="ar-cod_barra"></div>
+        <div><label for="ar-fecha_alta_web">Fecha alta web</label><input id="ar-fecha_alta_web" type="date"></div>
+        <div class="full" style="display:flex; gap:16px; flex-wrap:wrap">
+          <label class="check"><input type="checkbox" id="ar-foto"> Foto</label>
+          <label class="check"><input type="checkbox" id="ar-descripcion_ok"> Descripción OK</label>
+          <label class="check"><input type="checkbox" id="ar-cargado_web"> Cargado web</label>
+          <label class="check"><input type="checkbox" id="ar-catalogo"> Catálogo</label>
+          <label class="check"><input type="checkbox" id="ar-sin_stock"> Sin stock</label>
+          <label class="check"><input type="checkbox" id="ar-ya_no_esta"> Ya no está en la página</label>
+        </div>
+        <div class="full"><label for="ar-observaciones">Observaciones</label><textarea id="ar-observaciones" rows="2"></textarea></div>
+      </div>
+      <div class="dlg-pie">
+        <button type="button" class="btn-sec" data-cerrar>Cancelar</button>
+        <button type="submit" class="btn-sec primario" id="articulo-guardar">Guardar</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+
+<!-- ============ Diálogo: columnas de la planilla ============ -->
+<dialog class="dlg" id="dlg-columnas">
+  <div class="dlg-head"><h3>Columnas de la planilla</h3>
+    <button type="button" class="btn-cerrar" data-cerrar aria-label="Cerrar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+  </div>
+  <div class="dlg-body">
+    <p class="hint">Elegí qué columnas ves. Se guarda en tu usuario: cada uno tiene su propia vista.</p>
+    <div id="columnas-lista"></div>
+    <div class="dlg-pie">
+      <button type="button" class="link" id="columnas-todas">Mostrar todas</button>
+      <button type="button" class="btn-sec" data-cerrar>Cancelar</button>
+      <button type="button" class="btn-sec primario" id="columnas-guardar">Guardar</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- ============ Diálogo: renombrar un proveedor ============ -->
+<dialog class="dlg" id="dlg-proveedor">
+  <form method="dialog" id="form-proveedor" autocomplete="off">
+    <div class="dlg-head"><h3>Renombrar proveedor</h3>
+      <button type="button" class="btn-cerrar" data-cerrar aria-label="Cerrar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+    </div>
+    <div class="dlg-body">
+      <dl class="ficha-datos">
+        <div><dt>Razón social (Manager)</dt><dd id="prov-razon"></dd></div>
+        <div><dt>CUIT</dt><dd id="prov-cuit"></dd></div>
+      </dl>
+      <label for="prov-nombre">Nombre con el que se muestra</label>
+      <input id="prov-nombre" maxlength="40" placeholder="ej: Target, Bagcherry, Lesedife">
+      <p class="hint">Así se va a ver al lado de cada código: <span id="prov-vista"></span></p>
+      <div class="mensaje-error" id="prov-aviso" role="alert"></div>
+      <div class="dlg-pie">
+        <button type="button" class="link" id="prov-original" style="margin-right:auto">Volver a la razón social</button>
+        <button type="button" class="btn-sec" data-cerrar>Cancelar</button>
+        <button type="submit" class="btn-sec primario" id="prov-guardar">Guardar</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+
+<!-- ============ Ventanita: descripción web rápida (se abre sobre la celda) ============ -->
+<div class="pop-desc" id="pop-desc" role="dialog" aria-labelledby="pop-desc-titulo" hidden>
+  <div class="pop-desc-titulo" id="pop-desc-titulo"></div>
+  <textarea id="pop-desc-texto" rows="7" placeholder="Escribí o pegá la descripción web…"></textarea>
+  <label class="check" style="margin-top:6px"><input type="checkbox" id="pop-desc-ok"> Marcar "Descripción OK"</label>
+  <div class="pop-desc-pie">
+    <span class="hint" style="margin:0">Ctrl+Enter: guardar y seguir · Esc: cerrar</span>
+    <button type="button" class="btn-sec" id="pop-desc-guardar">Guardar</button>
+    <button type="button" class="btn-sec primario" id="pop-desc-seguir">Guardar y siguiente</button>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" hidden></div>
+
+<!-- Librerías (versión fija) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<script src="js/config.js?v=20261029.6"></script>
+<script src="js/utils.js?v=20261029.6"></script>
+<script src="js/lector-manager.js?v=20261029.6"></script>
+<script src="js/api.js?v=20261029.6"></script>
+
+<script src="js/vistas/acceso.js?v=20261029.6"></script>
+<script src="js/vistas/pendientes.js?v=20261029.6"></script>
+<script src="js/vistas/cargar.js?v=20261029.6"></script>
+<script src="js/vistas/planilla.js?v=20261029.6"></script>
+<script src="js/vistas/proveedores.js?v=20261029.6"></script>
+<script src="js/vistas/documentos.js?v=20261029.6"></script>
+<script src="js/vistas/usuarios.js?v=20261029.6"></script>
+
+<script src="js/main.js?v=20261029.6"></script>
+</body>
+</html>

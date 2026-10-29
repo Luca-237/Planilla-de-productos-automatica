@@ -1,0 +1,23 @@
+# 1) Forzar HTTPS
+RewriteEngine On
+RewriteCond %{HTTPS} !=on
+RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# 2) No servir los archivos internos del proyecto
+#    (la carpeta .git la crea el despliegue de Ferozo y tiene el historial completo)
+RedirectMatch 404 /\.git
+RewriteRule "^(supabase|pruebas|datos-privados|node_modules)(/|$)" - [R=404,L]
+<FilesMatch "(\.md|\.bat|\.json|\.txt|\.csv|\.xlsx|\.xls|\.pdf|\.sql|\.gitignore|\.htpasswd.*)$">
+  Require all denied
+</FilesMatch>
+<Files "robots.txt">
+  Require all granted
+</Files>
+
+# 3) Que los buscadores no la indexen y que no se pueda embeber en otra página
+<IfModule mod_headers.c>
+  Header set X-Robots-Tag "noindex, nofollow"
+  Header set X-Frame-Options "DENY"
+  Header set Referrer-Policy "same-origin"
+</IfModule>

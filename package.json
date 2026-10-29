@@ -1,0 +1,12 @@
+{
+  "name": "carga-articulos-oc-remitos",
+  "private": true,
+  "description": "Control de llegada de mercadería de Cindy Mayorista: órdenes de compra, remitos y facturas de proveedores.",
+  "scripts": {
+    "test": "node --test \"pruebas/*.test.*\""
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.13",
+    "xlsx": "0.18.5"
+  }
+}

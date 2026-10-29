@@ -1,0 +1,11 @@
+# Documentos reales de compras (OC, remitos, facturas, exportaciones): NUNCA al repo
+datos-privados/
+*.csv
+*.xlsx
+*.xls
+*.pdf
+# Dependencias de Node (solo para las pruebas en la PC)
+node_modules/
+# Archivos de Windows
+Thumbs.db
+desktop.ini

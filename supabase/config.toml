@@ -1,0 +1,7 @@
+# Configuración mínima para la CLI de Supabase (solo si se despliega con la CLI).
+# verify_jwt = false: con las claves nuevas de Supabase, las sesiones no están
+# firmadas con el "legacy secret" y la puerta de entrada rechazaría al admin.
+# La función verifica sola que haya una sesión válida y que sea de un admin activo.
+# (Es lo mismo que "Verify JWT with legacy secret" apagado en el panel.)
+[functions.admin-usuarios]
+verify_jwt = false
