@@ -83,8 +83,12 @@ La importación (arriba) no pisa lo que ya existe. Para ponerse al día con una 
 - **Campos de artículo que cambiaron** en la planilla (casillas, textos, fecha de alta, proveedor, principal y color de las variantes). Lo que no cambió en la planilla no se toca.
 - **Órdenes que ya estaban:** líneas nuevas, precios corregidos, **lo que llegó** (se da por recibido lo que falta, con el remito `PLANILLA-<orden>`) y las líneas que ya no van (solo si no recibieron nada de un remito real de Manager). Una línea que figuraba llegada y ahora no, no se toca: se avisa.
 - Es repetible. Se corre con la planilla anterior y la nueva descargadas como `.xlsx` (en `datos-privados/`): primero se simula (`R.api.importacion.sincronizar(plan.doc, true)`) y después se aplica en el orden renombres → nuevos → campos → líneas. Por ahora lo corre quien mantiene el sistema; no tiene pantalla.
+- **Segunda actualización (2/11/2026, planilla de las 15:19):** 20 llegadas y 20 artículos con cambios (17 cargados a la web con su fecha de alta y 11 con foto); sin renombres ni líneas nuevas. La base quedó en 3.096 líneas recibidas y 500 pendientes.
 - **Primera actualización (2/11/2026):** 380 códigos corregidos (31 fusionados), 3 artículos y 2 órdenes nuevos, 167 artículos con cambios, 64 llegadas, 34 líneas de variantes que ya no van, 1 precio. Quedó igual a la planilla: 4.099 artículos, 357 órdenes, 3.596 líneas (3.076 recibidas y 520 pendientes, 33.706 unidades).
 - Pruebas: `pruebas/importador.test.js` (el plan) y la prueba de `sincronizar_planilla` en `pruebas/base.test.mjs`.
+
+### Filtro "Subir a la página" (Planilla → Mostrar)
+Es el filtro **SUBIR PAGINA** de la planilla anterior: la mercadería que **ya llegó** (la orden está completa), **todavía no está cargada en la web** y **tiene stock** (no está marcada "sin stock"). Sirve para ver qué hay que subir. Con la planilla del 2/11 (15:19) da exactamente las mismas 3 filas que el filtro de Google Sheets (817989, 848828 y 848829). Si en la Planilla se tilda "Cargado web" o "Sin stock", la fila sale de la lista sola.
 
 ### Seleccionar y copiar celdas (como en Sheets)
 En la Planilla se **arrastra con el mouse** sobre las celdas para marcar un rango (filas × columnas). Se ve un borde naranja y una barra con "N filas × M columnas elegidas".

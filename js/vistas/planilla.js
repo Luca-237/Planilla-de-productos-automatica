@@ -96,6 +96,8 @@
     // "sin_stock" y "ya_no_esta" muestran los marcados; el resto, los que faltan
     const pasa = f => {
       if (!falta) return true;
+      // Como el filtro "SUBIR PAGINA" de la planilla anterior: mercadería que llegó, todavía no cargada en la web y con stock
+      if (falta === "subir_web") return f.estado === "completa" && !f.cargado_web && !f.sin_stock;
       if (falta === "web_sin") return !f.web_estado;
       if (falta === "web_si") return ["publicado", "solo_variantes"].includes(f.web_estado);
       if (falta === "web_no") return f.web_estado === "no_esta";
@@ -211,7 +213,7 @@
   // (mientras se revisa en la web, para que las filas no salten).
   function refrescarCeldas(codigos, claves, siFiltraTodo = true) {
     const falta = $("planilla-falta").value;
-    if (siFiltraTodo && falta && claves.some(k => k === falta || (k === "web_estado" && falta.startsWith("web_")))) return pintar();
+    if (siFiltraTodo && falta && claves.some(k => k === falta || (k === "web_estado" && falta.startsWith("web_")) || (falta === "subir_web" && (k === "cargado_web" || k === "sin_stock")))) return pintar();
     const set = new Set(codigos), lista = mostradas(), cols = visibles().filter(c => claves.includes(c.clave));
     if (!cols.length) return;
     document.querySelectorAll("#planilla-tabla tbody tr[data-i]").forEach(tr => {
