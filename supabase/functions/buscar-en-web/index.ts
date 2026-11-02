@@ -7,6 +7,7 @@
 //
 //  POST { codigos: ["855338", "3M201", ...] }  (hasta 100 por pedido)
 //  Solo para usuarios activos con rol admin o carga.
+//  Cada resultado trae también el precio que muestra la tienda (precio, o null si no muestra).
 //  Con "imagenes": true además baja la foto de cada producto publicado (hasta 12 códigos por pedido)
 //  y la devuelve en base64: el navegador no puede leer las fotos de la tienda (no permite otros sitios).
 //  Con "Accept: text/event-stream" responde por SSE: un evento por código
@@ -45,7 +46,15 @@ export function decodificar(texto: string): string {
     .replace(/&([a-zA-Z]+);/g, (m, e) => ENTIDADES[e] ?? m);
 }
 
-export type Producto = { codigo: string; nombre: string; url: string; imagen: string };
+export type Producto = { codigo: string; nombre: string; url: string; imagen: string; precio: number | null };
+
+// "$&nbsp;1.200" (puntos de miles, coma decimal) -> 1200. El primer precio de la tarjeta, después del código.
+export function leerPrecio(texto: string): number | null {
+  const m = texto.replace(/^.*?C[óo]digo\s+[A-Za-z0-9.\-]+/, "").match(/\$\s*([0-9][0-9.]*(?:,[0-9]{1,2})?)/);
+  if (!m) return null;
+  const n = Number(m[1].replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
 
 // Cada resultado de la búsqueda es un "product-listing-item" con
 // meta itemprop="name", link itemprop="url" y el texto "Código XXXX".
@@ -58,19 +67,20 @@ export function leerResultados(html: string): Producto[] {
       url: (p.match(/itemprop="url" href="([^"]*)"/) || [])[1] || "",
       // la foto principal: <img ... src="mods/…/thumb_03_855338-1-1.jpg.webp" … itemprop="image">
       imagen: (p.match(/<img[^>]*\ssrc="([^"]+)"[^>]*itemprop="image"/) || [])[1] || "",
+      precio: leerPrecio(texto),
     };
   }).filter((x) => x.codigo);
 }
 
-export type Resultado = { codigo: string; estado: "publicado" | "solo_variantes" | "no_esta"; url: string; nombre: string; imagen: string };
+export type Resultado = { codigo: string; estado: "publicado" | "solo_variantes" | "no_esta"; url: string; nombre: string; imagen: string; precio: number | null };
 
 export function clasificar(codigo: string, productos: Producto[]): Resultado {
   const buscado = codigo.toUpperCase();
   const exacto = productos.find((p) => p.codigo.toUpperCase() === buscado);
-  if (exacto) return { codigo, estado: "publicado", url: exacto.url, nombre: exacto.nombre, imagen: exacto.imagen };
+  if (exacto) return { codigo, estado: "publicado", url: exacto.url, nombre: exacto.nombre, imagen: exacto.imagen, precio: exacto.precio };
   const variante = productos.find((p) => p.codigo.toUpperCase().startsWith(buscado + "-"));
-  if (variante) return { codigo, estado: "solo_variantes", url: variante.url, nombre: variante.nombre, imagen: variante.imagen };
-  return { codigo, estado: "no_esta", url: "", nombre: "", imagen: "" };
+  if (variante) return { codigo, estado: "solo_variantes", url: variante.url, nombre: variante.nombre, imagen: variante.imagen, precio: variante.precio };
+  return { codigo, estado: "no_esta", url: "", nombre: "", imagen: "", precio: null };
 }
 
 export async function revisarCodigo(codigo: string, base: string): Promise<Resultado> {
@@ -175,7 +185,7 @@ if (D && D.serve) {
           return r;
         } catch (e) {
           // Si la tienda no responde no se guarda nada: vale el resultado anterior
-          return { codigo, estado: "error", url: "", nombre: "", imagen: "", error: e instanceof Error ? e.message : String(e) };
+          return { codigo, estado: "error", url: "", nombre: "", imagen: "", precio: null, error: e instanceof Error ? e.message : String(e) };
         }
       };
 

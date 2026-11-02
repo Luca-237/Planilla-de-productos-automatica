@@ -128,15 +128,7 @@
     return pptx;
   }
 
-  // Precio sugerido: costo + recargo, redondeado hacia arriba (de a 50 hasta $5.000 y, desde ahí, terminado en 999).
-  // Es solo una sugerencia: el precio de cada artículo se corrige a mano en la lista.
-  function sugerirPrecio(costo, recargo) {
-    if (!(costo > 0)) return null;
-    const base = costo * (1 + (Number(recargo) || 0) / 100);
-    return base < 5000 ? Math.ceil(base / 50) * 50 : Math.ceil((base + 1) / 1000) * 1000 - 1;
-  }
-
-  const api = { crearPDF, crearPPTX, textoPrecio, sugerirPrecio, hojasDe, POR_HOJA, _medidas: { HOJA, TARJETA, L } };
+  const api = { crearPDF, crearPPTX, textoPrecio, hojasDe, POR_HOJA, _medidas: { HOJA, TARJETA, L } };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else global.CatalogoFormato = api;
 })(typeof window !== 'undefined' ? window : globalThis);

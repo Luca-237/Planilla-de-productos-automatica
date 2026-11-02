@@ -264,7 +264,8 @@
           if (codigo === "EJ-502") r = { codigo, estado: "error", url: "", nombre: "", error: "la tienda no respondió (demo)" };
           else {
             const estado = fijos[codigo] || "no_esta";
-            r = { codigo, estado, url: estado === "no_esta" ? "" : "https://www.cindymayorista.com.ar/demo/" + codigo.toLowerCase() + ".html", nombre: estado === "no_esta" ? "" : (a ? a.descripcion : codigo) };
+            r = { codigo, estado, url: estado === "no_esta" ? "" : "https://www.cindymayorista.com.ar/demo/" + codigo.toLowerCase() + ".html", nombre: estado === "no_esta" ? "" : (a ? a.descripcion : codigo),
+                  precio: estado === "no_esta" ? null : (codigo === "EJ-501" ? null : 1200 + (codigo.charCodeAt(codigo.length - 1) % 10) * 50) }; // EJ-501: la página no muestra precio
             if (a) Object.assign(a, { web_estado: r.estado, web_url: r.url, web_nombre: r.nombre, web_revisado_en: new Date().toISOString() });
           }
           // para el catálogo: una "foto" de ejemplo (un SVG con el código)

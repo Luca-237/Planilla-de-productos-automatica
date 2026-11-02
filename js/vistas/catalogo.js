@@ -1,8 +1,10 @@
 // =====================================================================
 //  Catálogo de ingresos: se arma con los artículos elegidos en la
-//  planilla. Las fotos se traen de la web de Cindy (la función
-//  buscar-en-web las baja, el navegador no puede), el precio se sugiere
-//  desde el costo y se puede corregir, y se descarga en PDF (igual al
+//  planilla, pero SOLO con los que están publicados en la web de Cindy.
+//  Al abrirlo se comprueba cada artículo en la página (la función
+//  buscar-en-web; el navegador no puede leer la tienda) y de ahí salen
+//  el precio y la foto. Los que no están no entran al catálogo. El precio
+//  de la página se puede corregir a mano y se descarga en PDF (igual al
 //  catálogo de Manager) o en PowerPoint (formas y textos editables).
 //  El dibujo de las hojas está en js/catalogo-formato.js.
 // =====================================================================
@@ -15,10 +17,11 @@
   };
   const FOTO_MAX = 900; // px del lado mayor: alcanza para imprimir y mantiene livianos el PDF y el PowerPoint
 
-  let items = [];          // [{ codigo, nombre, costo, precio, foto, fotoAncho, fotoAlto, fotoFormato, estado }]
-  let busqueda = null;     // AbortController de la búsqueda de fotos
+  // estado: "" (sin comprobar) | "publicado" | "solo_variantes" | "no_esta" | "error"
+  let items = [];          // [{ codigo, nombre, precio, precioWeb, url, foto, fotoAncho, fotoAlto, fotoFormato, estado }]
+  let busqueda = null;     // AbortController de la comprobación en curso
   const cfgWeb = () => Object.assign({ lote: 10, esperaSegundos: 5 }, (window.COMPRAS_CONFIG || {}).revisionWeb);
-  const cfgCat = () => Object.assign({ recargo: 58 }, (window.COMPRAS_CONFIG || {}).catalogo);
+  const enPagina = it => it.estado === "publicado" || it.estado === "solo_variantes";
 
   // ---------- Preferencias (por navegador) ----------
   const PREF = "compras-catalogo";
@@ -26,11 +29,8 @@
     try { return JSON.parse(localStorage.getItem(PREF)) || {}; } catch (e) { return {}; }
   }
   function guardarPref() {
-    try { localStorage.setItem(PREF, JSON.stringify({ recargo: Number($("cat-recargo").value) || 0, mostrarPrecio: $("cat-precio").checked, mostrarIva: $("cat-iva").checked })); } catch (e) {}
+    try { localStorage.setItem(PREF, JSON.stringify({ mostrarPrecio: $("cat-precio").checked, mostrarIva: $("cat-iva").checked })); } catch (e) {}
   }
-
-  // Precio sugerido (costo + recargo, redondeado): ver CatalogoFormato.sugerirPrecio
-  const sugerirPrecio = (costo, recargo) => window.CatalogoFormato.sugerirPrecio(costo, recargo);
 
   // ---------- Librerías (se bajan solo al armar un catálogo) ----------
   const cargando = {};
@@ -67,17 +67,20 @@
   }
   const leerArchivo = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => no(new Error("No se pudo leer el archivo.")); r.readAsDataURL(f); });
 
-  async function buscarFotos() {
+  // ---------- Comprobar en la página ----------
+  // Busca cada artículo sin comprobar (o que falló) en la web: de ahí salen el precio y la foto.
+  async function comprobar() {
     if (busqueda) return busqueda.abort();
-    const faltan = items.filter(i => !i.foto && i.estado !== "no_esta");
-    if (!faltan.length) return toast("No faltan fotos por buscar.");
+    const faltan = items.filter(i => !i.estado || i.estado === "error");
+    if (!faltan.length) return toast("Ya se comprobaron todos.");
     const { esperaSegundos } = cfgWeb(), lote = Math.min(cfgWeb().lote, 12);
     const control = busqueda = new AbortController();
-    const boton = $("cat-buscar-fotos");
-    boton.classList.add("detener"); $("cat-buscar-texto").textContent = "Detener";
+    const boton = $("cat-comprobar");
+    boton.classList.add("detener"); $("cat-comprobar-texto").textContent = "Detener";
+    pintarLista();
     const caja = $("cat-progreso"), barra = $("cat-barra"), pista = $("cat-pista");
     caja.hidden = false; caja.classList.remove("termino");
-    let hechos = 0, conFoto = 0, sinFoto = 0;
+    let hechos = 0, publicados = 0, ausentes = 0, fallas = 0;
     const lotes = Math.ceil(faltan.length / lote);
     const avance = detalle => {
       const pct = Math.round((hechos / faltan.length) * 100);
@@ -85,7 +88,7 @@
       $("cat-cifras").textContent = `${fmtNum(hechos)} de ${fmtNum(faltan.length)} · ${pct}%`;
       if (detalle != null) $("cat-detalle").textContent = detalle;
     };
-    $("cat-progreso-titulo").textContent = "Buscando fotos en la web";
+    $("cat-progreso-titulo").textContent = "Comprobando que estén en la página";
     avance("Empezando…");
     try {
       for (let i = 0, n = 1; i < faltan.length && !control.signal.aborted; i += lote, n++) {
@@ -97,13 +100,18 @@
             hechos++;
             const it = items.find(x => x.codigo === r.codigo);
             if (!it) return;
-            if (r.estado === "no_esta") { it.estado = "no_esta"; sinFoto++; }
-            else if (r.estado === "error") sinFoto++;
-            else if (r.foto && r.foto.base64) {
-              // se procesa aparte: decodificar la foto no frena la llegada de las demás
-              pendientes.push(procesarImagen(`data:${r.foto.tipo};base64,${r.foto.base64}`).then(p => { Object.assign(it, p); conFoto++; pintarLista(); }).catch(() => { sinFoto++; }));
-            } else sinFoto++;
+            it.estado = r.estado;
+            if (r.estado === "error") fallas++;
+            else if (r.estado === "no_esta") ausentes++;
+            else {
+              publicados++;
+              it.url = r.url; it.precioWeb = r.precio ?? null;
+              if (it.precio == null) it.precio = it.precioWeb; // el precio de la página, salvo que ya se haya corregido
+              // la foto se procesa aparte: decodificarla no frena la llegada de las demás
+              if (r.foto && r.foto.base64) pendientes.push(procesarImagen(`data:${r.foto.tipo};base64,${r.foto.base64}`).then(p => { Object.assign(it, p); pintarLista(); }).catch(() => {}));
+            }
             avance();
+            pintarLista();
           },
         });
         await Promise.all(pendientes);
@@ -115,37 +123,45 @@
     } catch (e) { if (e.name !== "AbortError") toast(e.message, "error", 7000); }
     finally {
       busqueda = null;
-      boton.classList.remove("detener"); $("cat-buscar-texto").textContent = "Buscar fotos en la web";
+      boton.classList.remove("detener");
     }
     const completa = hechos >= faltan.length;
     caja.classList.toggle("termino", completa);
-    $("cat-progreso-titulo").textContent = completa ? "Búsqueda terminada" : "Búsqueda detenida";
-    $("cat-detalle").textContent = `${fmtNum(conFoto)} con foto · ${fmtNum(sinFoto)} sin foto: se puede subir a mano con "Subir foto".`;
+    $("cat-progreso-titulo").textContent = completa ? "Comprobación terminada" : "Comprobación detenida";
+    $("cat-detalle").textContent = `${fmtNum(publicados)} en la página · ${fmtNum(ausentes)} no están${fallas ? ` · ${fmtNum(fallas)} sin respuesta de la tienda (se pueden volver a comprobar)` : ""}.`;
     pintarLista();
   }
 
   // ---------- Lista ----------
+  const CHIP = { publicado: ["ok", "En la página"], solo_variantes: ["var", "Por variantes"], no_esta: ["no", "No está"], error: ["alerta", "Sin respuesta"] };
   function pintarLista() {
-    const con = items.filter(i => i.foto).length;
-    $("cat-resumen").textContent = `${plural(items.length, "artículo", "artículos")} · ${Math.max(1, Math.ceil(items.length / 4))} ${Math.ceil(items.length / 4) <= 1 ? "hoja" : "hojas"} · ${con} con foto`;
-    $("cat-tabla").innerHTML = `<thead><tr><th>Foto</th><th>Nombre</th><th>Código</th><th class="num">Costo</th><th class="num">Precio</th><th></th></tr></thead>
-      <tbody>${items.map((it, i) => `<tr data-i="${i}">
-        <td class="cat-foto">${it.foto ? `<img src="${it.foto}" alt="" width="46" height="46">` : `<span class="cat-sin">${it.estado === "no_esta" ? "No está en la web" : "Sin foto"}</span>`}
-          <label class="link cat-subir">${it.foto ? "Cambiar" : "Subir foto"}<input type="file" accept="image/*" data-subir="${i}" hidden></label></td>
+    const dentro = items.filter(enPagina), fuera = items.filter(i => i.estado === "no_esta");
+    const sin = items.filter(i => !i.estado || i.estado === "error").length;
+    const hojas = Math.max(1, Math.ceil(dentro.length / 4));
+    $("cat-resumen").textContent = busqueda
+      ? "Comprobando…"
+      : `${plural(dentro.length, "artículo en el catálogo", "artículos en el catálogo")} (${hojas} ${hojas === 1 ? "hoja" : "hojas"})` +
+        (fuera.length ? ` · ${fuera.length} no ${fuera.length === 1 ? "está" : "están"} en la página y no ${fuera.length === 1 ? "entra" : "entran"}` : "") +
+        (sin ? ` · ${sin} sin comprobar` : "");
+    $("cat-tabla").innerHTML = `<thead><tr><th>Foto</th><th>Nombre</th><th>Código</th><th>En la página</th><th class="num">Precio</th><th></th></tr></thead>
+      <tbody>${items.map((it, i) => {
+        const chip = it.estado ? CHIP[it.estado] : null;
+        const ok = enPagina(it);
+        return `<tr data-i="${i}" class="${it.estado === "no_esta" ? "cat-fuera" : ""}">
+        <td class="cat-foto">${it.foto ? `<img src="${it.foto}" alt="" width="46" height="46">` : `<span class="cat-sin">${ok ? "Sin foto" : "—"}</span>`}
+          ${ok ? `<label class="link cat-subir">${it.foto ? "Cambiar" : "Subir foto"}<input type="file" accept="image/*" data-subir="${i}" hidden></label>` : ""}</td>
         <td><input value="${esc(it.nombre)}" data-campo="nombre" aria-label="Nombre de ${esc(it.codigo)}"></td>
         <td><strong>${esc(it.codigo)}</strong></td>
-        <td class="num">${it.costo ? "$ " + fmtNum(it.costo) : "—"}</td>
-        <td class="num"><input type="number" min="0" step="1" value="${it.precio ?? ""}" data-campo="precio" aria-label="Precio de ${esc(it.codigo)}" placeholder="—"></td>
+        <td>${chip ? (it.url && ok ? `<a class="web-chip ${chip[0]}" href="${esc(it.url)}" target="_blank" rel="noopener">${chip[1]}</a>` : `<span class="web-chip ${chip[0]}">${chip[1]}</span>`) : `<span class="web-chip sin">${busqueda ? "Esperando…" : "Sin comprobar"}</span>`}</td>
+        <td class="num">${ok ? `<input type="number" min="0" step="1" value="${it.precio ?? ""}" data-campo="precio" aria-label="Precio de ${esc(it.codigo)}" placeholder="—" title="${it.precioWeb != null ? `Precio en la página: $ ${fmtNum(it.precioWeb)}` : "La página no muestra precio: se puede escribir a mano"}">` : "—"}</td>
         <td><button type="button" class="link peligro" data-quitar="${i}" aria-label="Quitar ${esc(it.codigo)}">Quitar</button></td>
-      </tr>`).join("") || `<tr><td colspan="6" class="vacio">No quedó ningún artículo.</td></tr>`}</tbody>`;
-    ["cat-pdf", "cat-pptx"].forEach(id => { $(id).disabled = !items.length; });
-  }
-
-  function recalcularPrecios() {
-    const r = Number($("cat-recargo").value) || 0;
-    items.forEach(it => { it.precio = sugerirPrecio(it.costo, r); });
-    pintarLista();
-    guardarPref();
+      </tr>`;
+      }).join("") || `<tr><td colspan="6" class="vacio">No quedó ningún artículo.</td></tr>`}</tbody>`;
+    const listo = dentro.length > 0 && !busqueda;
+    ["cat-pdf", "cat-pptx"].forEach(id => { $(id).disabled = !listo; });
+    $("cat-comprobar").hidden = false;
+    $("cat-comprobar-texto").textContent = busqueda ? "Detener" : (sin ? "Comprobar en la página" : "Volver a comprobar");
+    $("cat-aviso").hidden = !(dentro.length === 0 && !busqueda && items.length && !sin);
   }
 
   // ---------- Descargas ----------
@@ -156,46 +172,48 @@
   const opciones = () => ({ mostrarPrecio: $("cat-precio").checked, mostrarIva: $("cat-iva").checked });
 
   async function descargar(tipo) {
-    const boton = $(tipo === "pdf" ? "cat-pdf" : "cat-pptx");
+    const boton = $(tipo === "pdf" ? "cat-pdf" : "cat-pptx"), dentro = items.filter(enPagina);
+    if (!dentro.length) return;
     boton.disabled = true;
     try {
       await cargarLib(tipo);
-      if (tipo === "pdf") window.CatalogoFormato.crearPDF(window.jspdf.jsPDF, items, opciones()).save(nombreArchivo("pdf"));
-      else await window.CatalogoFormato.crearPPTX(window.PptxGenJS, items, opciones()).writeFile({ fileName: nombreArchivo("pptx") });
-      toast(`${tipo === "pdf" ? "PDF" : "PowerPoint"} descargado.`);
+      if (tipo === "pdf") window.CatalogoFormato.crearPDF(window.jspdf.jsPDF, dentro, opciones()).save(nombreArchivo("pdf"));
+      else await window.CatalogoFormato.crearPPTX(window.PptxGenJS, dentro, opciones()).writeFile({ fileName: nombreArchivo("pptx") });
+      toast(`${tipo === "pdf" ? "PDF" : "PowerPoint"} descargado con ${plural(dentro.length, "artículo", "artículos")}.`);
     } catch (e) { toast(e.message || "No se pudo armar el archivo.", "error", 7000); }
-    finally { boton.disabled = !items.length; }
+    finally { pintarLista(); }
   }
 
   // ---------- Abrir ----------
   // filas: filas de la planilla elegidas. Una por código (las variantes no van: el catálogo muestra el artículo).
   function abrir(filas) {
-    const vistos = new Set(), recargo = leerPref().recargo ?? cfgCat().recargo;
+    if (!R.app.puedeCargar()) return toast("Armar catálogos es para usuarios admin o carga: hay que comprobar la web.", "error", 6000);
+    const vistos = new Set();
     items = [];
     for (const f of filas) {
       if (f.es_variante || vistos.has(f.codigo)) continue;
       vistos.add(f.codigo);
-      const costo = Number(f.precio_unitario) || 0;
-      items.push({ codigo: f.codigo, nombre: f.nombre || "", costo, precio: sugerirPrecio(costo, recargo), foto: null, fotoAncho: 0, fotoAlto: 0, fotoFormato: "JPEG", estado: f.web_estado === "no_esta" ? "no_esta" : "" });
+      items.push({ codigo: f.codigo, nombre: f.nombre || "", precio: null, precioWeb: null, url: "", foto: null, fotoAncho: 0, fotoAlto: 0, fotoFormato: "JPEG", estado: "" });
     }
     if (!items.length) return toast("Elegí al menos un artículo (no vale solo variantes).", "error");
     const p = leerPref();
-    $("cat-recargo").value = recargo;
     $("cat-precio").checked = p.mostrarPrecio !== false;
     $("cat-iva").checked = p.mostrarIva !== false;
     $("cat-titulo").value = $("cat-titulo").value || "Catálogo de ingresos";
     $("cat-progreso").hidden = true;
     pintarLista();
     $("dlg-catalogo").showModal();
-    // Las librerías se bajan de fondo; las fotos se buscan solas
+    // Las librerías se bajan de fondo; la comprobación en la página empieza sola
     cargarLib("pdf").catch(() => {}); cargarLib("pptx").catch(() => {});
-    if (R.app.puedeCargar()) buscarFotos();
-    else $("cat-detalle").textContent = "";
+    comprobar();
   }
 
   function iniciar() {
-    $("cat-buscar-fotos").addEventListener("click", buscarFotos);
-    $("cat-recalcular").addEventListener("click", recalcularPrecios);
+    $("cat-comprobar").addEventListener("click", () => {
+      // "Volver a comprobar": se vuelve a consultar todo lo que ya estaba comprobado
+      if (!busqueda && !items.some(i => !i.estado || i.estado === "error")) items.forEach(i => { i.estado = ""; });
+      comprobar();
+    });
     $("cat-precio").addEventListener("change", guardarPref);
     $("cat-iva").addEventListener("change", guardarPref);
     $("cat-pdf").addEventListener("click", () => descargar("pdf"));
@@ -221,5 +239,5 @@
     });
   }
 
-  R.vistaCatalogo = { iniciar, mostrar() {}, abrir, _sugerirPrecio: sugerirPrecio };
+  R.vistaCatalogo = { iniciar, mostrar() {}, abrir };
 })(window.COMPRAS);

@@ -17,16 +17,6 @@ test('precio: "$ 1,200" con coma de miles, como el catálogo de Manager', () => 
   assert.equal(F.textoPrecio(1250.4), '$ 1,250');
 });
 
-test('precio sugerido: costo + recargo, redondeado hacia arriba', () => {
-  assert.equal(F.sugerirPrecio(680, 58), 1100);    // 1074,4 → de a 50
-  assert.equal(F.sugerirPrecio(782, 58), 1250);    // 1235,6
-  assert.equal(F.sugerirPrecio(1122, 58), 1800);   // 1772,8
-  assert.equal(F.sugerirPrecio(10725, 58), 16999); // 16945,5 → terminado en 999
-  assert.equal(F.sugerirPrecio(10335, 58), 16999);
-  assert.equal(F.sugerirPrecio(0, 58), null);
-  assert.equal(F.sugerirPrecio(null, 58), null);
-});
-
 test('4 tarjetas por hoja: la cantidad de hojas', () => {
   assert.deepEqual([0, 1, 4, 5, 8, 9].map(F.hojasDe), [1, 1, 1, 2, 2, 3]);
 });
