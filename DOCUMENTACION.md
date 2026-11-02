@@ -75,6 +75,23 @@ Sección **Importar planilla** del menú. Sube el **.xlsx** de la planilla "Proc
 - **Fuera del repo:** la planilla descargada va a `datos-privados/` (no se sube a GitHub).
 - Pruebas: `pruebas/importador.test.js` (lector) y la prueba de `importar_planilla` en `pruebas/base.test.mjs`.
 
+### Seleccionar y copiar celdas (como en Sheets)
+En la Planilla se **arrastra con el mouse** sobre las celdas para marcar un rango (filas × columnas). Se ve un borde naranja y una barra con "N filas × M columnas elegidas".
+- **Ctrl+C** (o el botón **Copiar**) copia el rango como texto con tabuladores y saltos de línea: se pega directo en una planilla u otro programa. Las casillas salen TRUE/FALSE, las fechas dd/mm/aaaa y los textos con tabuladores o saltos se entrecomillan.
+- **Copiar solo códigos**: una línea por código (sin repetir), para pasarlos a otro programa.
+- Cerca del borde de la tabla, al arrastrar sigue de largo. **Escape**, un clic suelto o "Quitar selección" sacan la selección.
+- Un clic suelto sigue abriendo lo de siempre (descripción rápida, ficha del artículo, tildar casillas); el arrastre no abre nada.
+- Las filas elegidas con las casillas de la primera columna también tienen **Copiar códigos**.
+
+### Catálogos de ingresos (PDF y PowerPoint)
+Botón **Armar catálogo** (barra de la Planilla y barras de selección): usa los artículos elegidos con las casillas de la primera columna o, si no hay, los que se arrastraron. Las variantes no van (el catálogo muestra el artículo).
+- **Formato:** copia el "Catálogo de ingresos" que sale de Manager: hoja **A4 vertical, 4 tarjetas por hoja (2 × 2)**; cada tarjeta, fondo gris con borde negro, **nombre** arriba y centrado, **foto** cuadrada sobre blanco, **"CÓD. 123456"** abajo a la izquierda y una **píldora negra con el precio** ("$ 1,200 +IVA") a la derecha. Dibujo en `js/catalogo-formato.js`.
+- **Fotos:** se buscan solas en la web de Cindy (`buscar-en-web` con `imagenes: true`: la función baja la foto original, o la miniatura grande si no está, y la devuelve; el navegador no puede leerlas directo porque la tienda no lo permite). Va de a 10 con 5 s de pausa, con barra de progreso, como "Revisar en la web" (y de paso guarda si está publicado). Lo que no está en la web sale "Sin foto" y se puede **subir a mano** por artículo ("Subir foto" / "Cambiar").
+- **Precio:** se **sugiere** desde el costo de la orden de compra más un **recargo** (58 % por defecto; `js/config.js` → `catalogo.recargo`), redondeado hacia arriba (de a 50 hasta $5.000 y, desde ahí, terminado en 999). **Es solo una sugerencia**: cada precio se corrige a mano en la lista; "Recalcular precios" vuelve a sugerirlos. Se puede sacar el precio y el "+IVA". Los ejemplos de Manager tienen entre 55 % y 60 % sobre el costo, pero no es una regla fija.
+- **Descargas:** **PDF** (jsPDF) y **PowerPoint** (PptxGenJS): una diapositiva A4 vertical por hoja, con formas y textos **editables** (nombre, código, precio) y la foto como imagen. Las librerías se bajan de internet recién al armar un catálogo. El nombre del archivo sale del campo "Nombre del archivo" más la fecha. El recargo y las opciones de precio se acuerdan en el navegador.
+- **Publicar la función:** `buscar-en-web` cambió (modo imágenes): hay que volver a pegar `supabase/functions/buscar-en-web/index.ts` en Supabase → Edge Functions → buscar-en-web → Code → Deploy updates (Verify JWT sigue apagado).
+- Pruebas: `pruebas/catalogo.test.js` (formato, hojas, PDF y PowerPoint) y `pruebas/web.test.mjs` (lectura de la foto).
+
 ### Caché en el navegador (para no consultar lo mismo a cada rato)
 `js/cache.js`, usado solo desde `js/api.js` (las pantallas no saben que existe, salvo que pasan `alActualizar`). Estrategia **stale-while-revalidate**:
 - **Dónde se guarda:** memoria (la pestaña), **localStorage** para lo chico (proveedores, colores, preferencias de columnas) e **IndexedDB** para lo grande (planilla, pendientes, órdenes, remitos…): localStorage tiene ~5 MB y la planilla con miles de filas no entra. Si el navegador no deja guardar (ventana privada, sin espacio), sigue solo con la memoria.

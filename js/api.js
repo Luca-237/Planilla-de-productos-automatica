@@ -204,13 +204,14 @@
   // Los resultados llegan de a uno por SSE, apenas la función revisa cada código: alResultado(r)
   // se llama con cada uno. "senal" (AbortController.signal) corta la revisión.
   const web = {
-    async revisar(codigos, { alResultado, senal } = {}) {
+    // imagenes: true además baja la foto de cada producto publicado (para el catálogo): llega en r.foto { tipo, base64 }
+    async revisar(codigos, { alResultado, senal, imagenes } = {}) {
       const c = window.COMPRAS_CONFIG, s = await auth.sesion();
       if (!s) throw new Error("La sesión venció. Volvé a ingresar.");
       let r;
       try {
         r = await fetch(c.supabaseUrl.replace(/\/+$/, "") + "/functions/v1/buscar-en-web", {
-          method: "POST", signal: senal, body: JSON.stringify({ codigos }),
+          method: "POST", signal: senal, body: JSON.stringify(imagenes ? { codigos, imagenes: true } : { codigos }),
           headers: { Authorization: "Bearer " + s.access_token, apikey: c.supabaseKey, "Content-Type": "application/json", Accept: "text/event-stream" },
         });
       } catch (e) {

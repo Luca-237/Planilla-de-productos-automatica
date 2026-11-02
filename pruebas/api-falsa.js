@@ -252,7 +252,7 @@
     // Imita a la función buscar-en-web con resultados fijos (no consulta la tienda real)
     web: {
       // Como la real: entrega los resultados de a uno (acá, cada 250 ms) y se puede cortar
-      revisar: async (codigos, { alResultado, senal } = {}) => {
+      revisar: async (codigos, { alResultado, senal, imagenes } = {}) => {
         if (!puedeCargar()) throw new Error("No tenés permiso para revisar en la web");
         const fijos = { DEMO103: "publicado", "EJ-501": "publicado", DEMO101: "solo_variantes" };
         const salida = [];
@@ -266,6 +266,11 @@
             const estado = fijos[codigo] || "no_esta";
             r = { codigo, estado, url: estado === "no_esta" ? "" : "https://www.cindymayorista.com.ar/demo/" + codigo.toLowerCase() + ".html", nombre: estado === "no_esta" ? "" : (a ? a.descripcion : codigo) };
             if (a) Object.assign(a, { web_estado: r.estado, web_url: r.url, web_nombre: r.nombre, web_revisado_en: new Date().toISOString() });
+          }
+          // para el catálogo: una "foto" de ejemplo (un SVG con el código)
+          if (imagenes && r.estado !== "no_esta" && r.estado !== "error") {
+            const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600"><rect width="600" height="600" fill="#cfd8dc"/><text x="300" y="320" font-size="64" font-family="Arial" text-anchor="middle" fill="#455a64">${codigo}</text></svg>`;
+            r.foto = { tipo: "image/svg+xml", base64: btoa(svg) };
           }
           salida.push(r);
           if (alResultado) alResultado(copia(r));

@@ -7,6 +7,8 @@
 //
 //  POST { codigos: ["855338", "3M201", ...] }  (hasta 100 por pedido)
 //  Solo para usuarios activos con rol admin o carga.
+//  Con "imagenes": true además baja la foto de cada producto publicado (hasta 12 códigos por pedido)
+//  y la devuelve en base64: el navegador no puede leer las fotos de la tienda (no permite otros sitios).
 //  Con "Accept: text/event-stream" responde por SSE: un evento por código
 //  apenas se revisa (la planilla los va mostrando); sin eso, JSON al final.
 //
@@ -24,6 +26,8 @@ const CORS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 const MAX_CODIGOS = 100;
+const MAX_CODIGOS_IMAGENES = 12;
+const MAX_BYTES_IMAGEN = 3_000_000;
 const EN_PARALELO = 4;          // para no cargar la tienda
 const ESPERA_MAX_MS = 12000;
 const CODIGO_VALIDO = /^[A-Za-z0-9.\-]{1,40}$/;
@@ -41,7 +45,7 @@ export function decodificar(texto: string): string {
     .replace(/&([a-zA-Z]+);/g, (m, e) => ENTIDADES[e] ?? m);
 }
 
-export type Producto = { codigo: string; nombre: string; url: string };
+export type Producto = { codigo: string; nombre: string; url: string; imagen: string };
 
 // Cada resultado de la búsqueda es un "product-listing-item" con
 // meta itemprop="name", link itemprop="url" y el texto "Código XXXX".
@@ -52,19 +56,21 @@ export function leerResultados(html: string): Producto[] {
       codigo: (texto.match(/Código\s+([A-Za-z0-9.\-]+)/) || [])[1] || "",
       nombre: decodificar((p.match(/itemprop="name" content="([^"]*)"/) || [])[1] || ""),
       url: (p.match(/itemprop="url" href="([^"]*)"/) || [])[1] || "",
+      // la foto principal: <img ... src="mods/…/thumb_03_855338-1-1.jpg.webp" … itemprop="image">
+      imagen: (p.match(/<img[^>]*\ssrc="([^"]+)"[^>]*itemprop="image"/) || [])[1] || "",
     };
   }).filter((x) => x.codigo);
 }
 
-export type Resultado = { codigo: string; estado: "publicado" | "solo_variantes" | "no_esta"; url: string; nombre: string };
+export type Resultado = { codigo: string; estado: "publicado" | "solo_variantes" | "no_esta"; url: string; nombre: string; imagen: string };
 
 export function clasificar(codigo: string, productos: Producto[]): Resultado {
   const buscado = codigo.toUpperCase();
   const exacto = productos.find((p) => p.codigo.toUpperCase() === buscado);
-  if (exacto) return { codigo, estado: "publicado", url: exacto.url, nombre: exacto.nombre };
+  if (exacto) return { codigo, estado: "publicado", url: exacto.url, nombre: exacto.nombre, imagen: exacto.imagen };
   const variante = productos.find((p) => p.codigo.toUpperCase().startsWith(buscado + "-"));
-  if (variante) return { codigo, estado: "solo_variantes", url: variante.url, nombre: variante.nombre };
-  return { codigo, estado: "no_esta", url: "", nombre: "" };
+  if (variante) return { codigo, estado: "solo_variantes", url: variante.url, nombre: variante.nombre, imagen: variante.imagen };
+  return { codigo, estado: "no_esta", url: "", nombre: "", imagen: "" };
 }
 
 export async function revisarCodigo(codigo: string, base: string): Promise<Resultado> {
@@ -80,6 +86,34 @@ export async function revisarCodigo(codigo: string, base: string): Promise<Resul
     if (!html.includes("Resultado B")) throw new Error("la página de búsqueda cambió o no cargó bien");
     return clasificar(codigo, leerResultados(html));
   } finally { clearTimeout(corte); }
+}
+
+// La foto de la tienda: se prefiere el original (…/855338-1-1.jpg) y, si no está, la miniatura grande (thumb_01, webp)
+export function urlsDeImagen(imagen: string, base: string): string[] {
+  if (!imagen) return [];
+  const abs = (p: string) => new URL(p, base + "/").href;
+  const original = imagen.replace(/thumb_\d+_/, "").replace(/\.webp$/i, "");
+  const grande = imagen.replace(/thumb_\d+_/, "thumb_01_");
+  return [...new Set([abs(original), abs(grande)])];
+}
+
+function aBase64(bytes: Uint8Array): string {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+export async function bajarImagen(imagen: string, base: string): Promise<{ tipo: string; base64: string } | null> {
+  for (const u of urlsDeImagen(imagen, base)) {
+    try {
+      const r = await fetch(u, { headers: { "User-Agent": "Cindy-Compras/1.0 (catalogo)" } });
+      const tipo = (r.headers.get("content-type") || "").split(";")[0].trim();
+      if (!r.ok || !tipo.startsWith("image/")) continue;
+      const bytes = new Uint8Array(await r.arrayBuffer());
+      if (bytes.length && bytes.length <= MAX_BYTES_IMAGEN) return { tipo, base64: aBase64(bytes) };
+    } catch (_) { /* se prueba con la siguiente */ }
+  }
+  return null;
 }
 
 // De a pocos en paralelo
@@ -125,7 +159,9 @@ if (D && D.serve) {
       const codigos = [...new Set((Array.isArray(body.codigos) ? body.codigos : []).map((c: unknown) => String(c ?? "").trim()))]
         .filter((c) => CODIGO_VALIDO.test(c as string)) as string[];
       if (!codigos.length) return respuesta({ error: "No hay códigos para revisar" }, 400);
-      if (codigos.length > MAX_CODIGOS) return respuesta({ error: "Como mucho " + MAX_CODIGOS + " códigos por pedido" }, 400);
+      const conImagenes = body.imagenes === true;
+      const tope = conImagenes ? MAX_CODIGOS_IMAGENES : MAX_CODIGOS;
+      if (codigos.length > tope) return respuesta({ error: "Como mucho " + tope + " códigos por pedido" }, 400);
 
       const revisar = async (codigo: string) => {
         try {
@@ -134,10 +170,12 @@ if (D && D.serve) {
             web_estado: r.estado, web_revisado_en: new Date().toISOString(), web_url: r.url, web_nombre: r.nombre,
           }).eq("codigo", codigo);
           if (error) throw error;
+          // Para el catálogo: la foto del producto (la lectura de la tienda ya la trae)
+          if (conImagenes && r.estado !== "no_esta") return { ...r, foto: await bajarImagen(r.imagen, tienda) };
           return r;
         } catch (e) {
           // Si la tienda no responde no se guarda nada: vale el resultado anterior
-          return { codigo, estado: "error", url: "", nombre: "", error: e instanceof Error ? e.message : String(e) };
+          return { codigo, estado: "error", url: "", nombre: "", imagen: "", error: e instanceof Error ? e.message : String(e) };
         }
       };
 

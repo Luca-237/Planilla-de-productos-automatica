@@ -4,11 +4,11 @@
 // Con PROBAR_TIENDA=1 además consulta la tienda real.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { leerResultados, clasificar, decodificar, revisarCodigo } from '../supabase/functions/buscar-en-web/index.ts';
+import { leerResultados, clasificar, decodificar, revisarCodigo, urlsDeImagen } from '../supabase/functions/buscar-en-web/index.ts';
 
-const tarjeta = (codigo, nombre, url) => `<div class="col-xs-24 product-listing-item"><input type="hidden" value="1" name="products_id">
+const tarjeta = (codigo, nombre, url, img = '') => `<div class="col-xs-24 product-listing-item"><input type="hidden" value="1" name="products_id">
   <div class="product-box" itemscope itemtype="http://schema.org/Product"><meta itemprop="name" content="${nombre}" />
-  <div itemprop="offers"><link itemprop="url" href="${url}" /></div>
+  ${img ? `<img loading = "lazy" src="${img}" alt="${nombre}" class="img-contained first-img" itemprop="image">` : ''}<div itemprop="offers"><link itemprop="url" href="${url}" /></div>
   <a href="${url}">${nombre}</a> <span class="product-model">C&oacute;digo ${codigo}</span> <span>$&nbsp;32.999</span>
   <script>enhancedClick({"id":"1"})</script></div></div>`;
 const pagina = (...t) => `<h1 class="page-title-home"><span>Resultado B&uacute;squeda</span></h1><div class="row product-listing">${t.join('')}</div>`;
@@ -16,20 +16,20 @@ const pagina = (...t) => `<h1 class="page-title-home"><span>Resultado B&uacute;s
 test('lee código, nombre y link de cada resultado', () => {
   const r = leerResultados(pagina(tarjeta('148216', 'CARTERA SOHO SKORA', 'https://t/cartera'), tarjeta('8216', 'ALMOHADA CERVICAL TRAVEL BLUE', 'https://t/almohada')));
   assert.deepEqual(r, [
-    { codigo: '148216', nombre: 'CARTERA SOHO SKORA', url: 'https://t/cartera' },
-    { codigo: '8216', nombre: 'ALMOHADA CERVICAL TRAVEL BLUE', url: 'https://t/almohada' },
+    { codigo: '148216', nombre: 'CARTERA SOHO SKORA', url: 'https://t/cartera', imagen: '' },
+    { codigo: '8216', nombre: 'ALMOHADA CERVICAL TRAVEL BLUE', url: 'https://t/almohada', imagen: '' },
   ]);
 });
 
 test('publicado solo con el código idéntico: buscar 8216 trae también 148216', () => {
   const r = leerResultados(pagina(tarjeta('148216', 'CARTERA', 'https://t/a'), tarjeta('8216', 'ALMOHADA', 'https://t/b')));
-  assert.deepEqual(clasificar('8216', r), { codigo: '8216', estado: 'publicado', url: 'https://t/b', nombre: 'ALMOHADA' });
+  assert.deepEqual(clasificar('8216', r), { codigo: '8216', estado: 'publicado', url: 'https://t/b', nombre: 'ALMOHADA', imagen: '' });
   assert.equal(clasificar('821', r).estado, 'no_esta');
 });
 
 test('solo variantes: está 3M201-GRE pero no 3M201', () => {
   const r = leerResultados(pagina(tarjeta('3M201-GRE', 'MOCHILA GRIS', 'https://t/g'), tarjeta('3M201-PAL', 'MOCHILA', 'https://t/p')));
-  assert.deepEqual(clasificar('3M201', r), { codigo: '3M201', estado: 'solo_variantes', url: 'https://t/g', nombre: 'MOCHILA GRIS' });
+  assert.deepEqual(clasificar('3M201', r), { codigo: '3M201', estado: 'solo_variantes', url: 'https://t/g', nombre: 'MOCHILA GRIS', imagen: '' });
   // la variante en sí, sí está publicada
   assert.equal(clasificar('3M201-PAL', r).estado, 'publicado');
   // mayúsculas/minúsculas no importan
@@ -37,7 +37,18 @@ test('solo variantes: está 3M201-GRE pero no 3M201', () => {
 });
 
 test('sin resultados → no está', () => {
-  assert.deepEqual(clasificar('NOEXISTE999', leerResultados(pagina())), { codigo: 'NOEXISTE999', estado: 'no_esta', url: '', nombre: '' });
+  assert.deepEqual(clasificar('NOEXISTE999', leerResultados(pagina())), { codigo: 'NOEXISTE999', estado: 'no_esta', url: '', nombre: '', imagen: '' });
+});
+
+test('lee la foto del producto y arma las direcciones a probar (original y miniatura grande)', () => {
+  const img = 'mods/html/fil/Model/Product/64279/thumb_03_855338-1-1.jpg.webp';
+  const r = leerResultados(pagina(tarjeta('855338', 'BROCHE TRENDY', 'https://t/b', img)));
+  assert.equal(r[0].imagen, img);
+  assert.equal(clasificar('855338', r).imagen, img);
+  assert.deepEqual(urlsDeImagen(img, 'https://www.cindymayorista.com.ar'), [
+    'https://www.cindymayorista.com.ar/mods/html/fil/Model/Product/64279/855338-1-1.jpg',
+    'https://www.cindymayorista.com.ar/mods/html/fil/Model/Product/64279/thumb_01_855338-1-1.jpg.webp']);
+  assert.deepEqual(urlsDeImagen('', 'https://x'), []);
 });
 
 test('decodifica las entidades de la tienda', () => {

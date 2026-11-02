@@ -106,6 +106,7 @@
   }
 
   function pintar() {
+    rango = null; // las filas pueden ser otras
     const lista = filtradas(), cols = visibles(), filasTabla = lista.slice(0, MAX_FILAS);
     const puede = editable();
     const todasElegidas = puede && filasTabla.length && filasTabla.every(f => seleccion.has(f.codigo));
@@ -153,6 +154,7 @@
     const todas = $("sel-todas");
     if (todas) todas.checked = lista.length > 0 && lista.every(x => seleccion.has(x.codigo));
     pintarBarraSeleccion();
+    marcarRango();
   }
 
   function pintarBarraSeleccion() {
@@ -190,6 +192,153 @@
     if (popIndice != null || revisionWeb) return;
     filas = datos;
     repintarTodo();
+  }
+
+  // ---------- Selección de celdas por arrastre (como en Sheets) y copiar ----------
+  // Se arrastra con el mouse sobre la tabla y se copia con Ctrl+C (o el botón Copiar): sale como texto con
+  // tabuladores, listo para pegar en una planilla u otro programa. Un clic suelto sigue abriendo lo de siempre.
+  let rango = null;                   // { i1, i2, c1, c2 }: filas de la tabla y columnas visibles
+  let ancla = null, arrastrando = false, huboArrastre = false, ultimoPunto = null, autoScroll = null;
+
+  const celdaDe = el => {
+    const td = el && el.closest && el.closest("#planilla-tabla td[data-c]");
+    if (!td) return null;
+    const c = visibles().findIndex(x => x.clave === td.dataset.c);
+    return c < 0 ? null : { i: Number(td.parentElement.dataset.i), c };
+  };
+
+  function marcarRango() {
+    document.querySelectorAll("#planilla-tabla td.rg").forEach(td => td.classList.remove("rg", "rg-t", "rg-b", "rg-l", "rg-r"));
+    if (rango) {
+      const cols = visibles();
+      document.querySelectorAll("#planilla-tabla tbody tr[data-i]").forEach(tr => {
+        const i = Number(tr.dataset.i);
+        if (i < rango.i1 || i > rango.i2) return;
+        tr.querySelectorAll("td[data-c]").forEach(td => {
+          const c = cols.findIndex(x => x.clave === td.dataset.c);
+          if (c < rango.c1 || c > rango.c2) return;
+          td.classList.add("rg");
+          if (i === rango.i1) td.classList.add("rg-t");
+          if (i === rango.i2) td.classList.add("rg-b");
+          if (c === rango.c1) td.classList.add("rg-l");
+          if (c === rango.c2) td.classList.add("rg-r");
+        });
+      });
+      const f = rango.i2 - rango.i1 + 1, c = rango.c2 - rango.c1 + 1;
+      $("rango-cuantas").textContent = `${plural(f, "fila", "filas")} × ${plural(c, "columna", "columnas")} elegidas:`;
+    }
+    $("planilla-rango").hidden = !rango;
+  }
+
+  function quitarRango() { if (!rango) return; rango = null; marcarRango(); }
+
+  function extenderRango(x, y) {
+    const cel = celdaDe(document.elementFromPoint(x, y));
+    if (!cel) return;
+    if (!huboArrastre && cel.i === ancla.i && cel.c === ancla.c) return;
+    huboArrastre = true;
+    rango = { i1: Math.min(ancla.i, cel.i), i2: Math.max(ancla.i, cel.i), c1: Math.min(ancla.c, cel.c), c2: Math.max(ancla.c, cel.c) };
+    marcarRango();
+    const s = window.getSelection(); if (s) s.removeAllRanges();
+  }
+
+  // Lo que se ve en cada celda, como texto: casillas TRUE/FALSE (como en Sheets), fechas dd/mm/aaaa
+  function valorCopia(c, f) {
+    const k = c.clave, v = f[k];
+    if (k === "web_estado") return v ? ({ publicado: "En la web", solo_variantes: "Por variantes", no_esta: "No está" })[v] : "Sin revisar";
+    if (typeof v === "boolean") return v ? "TRUE" : "FALSE";
+    if (k === "estado") return ESTADOS[v] || v || "";
+    if (/fecha|recepcion/.test(k)) return v ? fmtFecha(v) : "";
+    return v == null ? "" : String(v);
+  }
+  const celdaTSV = t => /[\t\n\r"]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+
+  function textoDelRango() {
+    const cols = visibles().slice(rango.c1, rango.c2 + 1);
+    return mostradas().slice(rango.i1, rango.i2 + 1).map(f => cols.map(c => celdaTSV(valorCopia(c, f))).join("\t")).join("\n");
+  }
+  const codigosDelRango = () => [...new Set(mostradas().slice(rango.i1, rango.i2 + 1).map(f => f.codigo))].join("\n");
+
+  async function copiarTexto(texto, mensaje) {
+    try { await navigator.clipboard.writeText(texto); }
+    catch (e) { // sin permiso del portapapeles: método clásico
+      const t = document.createElement("textarea");
+      t.value = texto; t.style.position = "fixed"; t.style.opacity = "0";
+      document.body.appendChild(t); t.select();
+      const ok = document.execCommand("copy");
+      t.remove();
+      if (!ok) return toast("No se pudo copiar.", "error");
+    }
+    toast(mensaje);
+  }
+
+  function copiarRango(soloCodigos) {
+    if (!rango) return;
+    if (soloCodigos) { const n = new Set(mostradas().slice(rango.i1, rango.i2 + 1).map(f => f.codigo)).size; return copiarTexto(codigosDelRango(), `Copiados ${plural(n, "código", "códigos")}.`); }
+    const f = rango.i2 - rango.i1 + 1, c = rango.c2 - rango.c1 + 1;
+    copiarTexto(textoDelRango(), `Copiado: ${plural(f, "fila", "filas")} × ${plural(c, "columna", "columnas")}.`);
+  }
+
+  function copiarElegidos() {
+    const codigos = [...new Set(filas.filter(f => seleccion.has(f.codigo)).map(f => f.codigo))];
+    if (codigos.length) copiarTexto(codigos.join("\n"), `Copiados ${plural(codigos.length, "código", "códigos")}.`);
+  }
+
+  // Catálogo con lo elegido: las casillas de la primera columna o, si no hay, lo arrastrado
+  function armarCatalogo() {
+    let elegidas;
+    if (seleccion.size) elegidas = filas.filter(f => seleccion.has(f.codigo));
+    else if (rango) elegidas = mostradas().slice(rango.i1, rango.i2 + 1);
+    else return toast("Elegí artículos: tildalos en la primera columna o arrastrá el mouse sobre la tabla.", "error", 6000);
+    R.vistaCatalogo.abrir(elegidas);
+  }
+
+  function iniciarRango() {
+    const tabla = $("planilla-tabla");
+    tabla.addEventListener("mousedown", e => {
+      if (e.button !== 0 || e.target.closest("a, input, button, label") || popIndice != null) return;
+      const cel = celdaDe(e.target);
+      if (!cel) return;
+      ancla = cel; arrastrando = true; huboArrastre = false; ultimoPunto = { x: e.clientX, y: e.clientY };
+    });
+    document.addEventListener("mousemove", e => {
+      if (!arrastrando) return;
+      ultimoPunto = { x: e.clientX, y: e.clientY };
+      extenderRango(e.clientX, e.clientY);
+      // Cerca del borde de la tabla, sigue de largo (como al arrastrar en una planilla)
+      if (huboArrastre && !autoScroll) {
+        autoScroll = setInterval(() => {
+          const w = tabla.closest(".tabla-wrap"), r = w.getBoundingClientRect(), p = ultimoPunto;
+          const dy = p.y < r.top + 50 ? -22 : p.y > r.bottom - 50 ? 22 : 0, dx = p.x < r.left + 50 ? -22 : p.x > r.right - 50 ? 22 : 0;
+          if (dy || dx) { w.scrollTop += dy; w.scrollLeft += dx; extenderRango(Math.max(r.left + 2, Math.min(p.x, r.right - 2)), Math.max(r.top + 2, Math.min(p.y, r.bottom - 2))); }
+        }, 40);
+      }
+    });
+    document.addEventListener("mouseup", () => {
+      if (!arrastrando) return;
+      arrastrando = false; clearInterval(autoScroll); autoScroll = null;
+      // el clic que viene justo después del arrastre no tiene que abrir nada
+      if (huboArrastre) setTimeout(() => { huboArrastre = false; }, 0);
+    });
+    // Ctrl+C con celdas elegidas (si no se está escribiendo en otro lado)
+    document.addEventListener("copy", e => {
+      const a = document.activeElement;
+      if (!rango || $("vista-planilla").hidden || document.querySelector("dialog[open]") || (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
+      e.clipboardData.setData("text/plain", textoDelRango());
+      e.preventDefault();
+      toast(`Copiado: ${plural(rango.i2 - rango.i1 + 1, "fila", "filas")} × ${plural(rango.c2 - rango.c1 + 1, "columna", "columnas")}.`);
+    });
+    // Un clic afuera de la tabla (y de las barras) o Escape sacan la selección
+    document.addEventListener("mousedown", e => { if (rango && !e.target.closest("#planilla-tabla, #planilla-rango, .toast, dialog")) quitarRango(); });
+    document.addEventListener("keydown", e => { if (e.key === "Escape" && rango && !document.querySelector("dialog[open]") && popIndice == null) quitarRango(); });
+    $("rango-copiar").addEventListener("click", () => copiarRango(false));
+    $("rango-codigos").addEventListener("click", () => copiarRango(true));
+    $("rango-catalogo").addEventListener("click", armarCatalogo);
+    $("rango-quitar").addEventListener("click", quitarRango);
+    $("seleccion-copiar").addEventListener("click", copiarElegidos);
+    $("seleccion-catalogo").addEventListener("click", armarCatalogo);
+    $("planilla-catalogo").addEventListener("click", armarCatalogo);
+    R.vistaCatalogo.iniciar();
   }
 
   // ---------- Casillas ----------
@@ -581,6 +730,7 @@
     $("ar-nc-agregar").addEventListener("click", colorNuevo);
     $("planilla-completa").addEventListener("click", () => pantallaCompleta());
     $("planilla-revisar-web").addEventListener("click", revisarEnWeb);
+    iniciarRango();
     document.addEventListener("keydown", e => {
       if (e.key === "Escape" && !e.defaultPrevented && $("vista-planilla").classList.contains("pantalla-completa") && !document.querySelector("dialog[open]")) pantallaCompleta(false);
     });
@@ -615,6 +765,8 @@
       }
     });
     tabla.addEventListener("click", e => {
+      if (huboArrastre) return; // terminó un arrastre de celdas: no es un clic
+      quitarRango();
       if (!editable() || e.target.closest("a")) return; // los enlaces (buscar en la web) hacen lo suyo
       const sel = e.target.closest("input.sel:not(#sel-todas)");
       if (sel) return elegir(sel, e.shiftKey);
