@@ -16,13 +16,13 @@
   --sobre-naranja:#fff;         /* letras sobre naranja: siempre blancas */
   /* Texto y líneas (grises con un toque de verde, para que combinen con el fondo) */
   --negro:#17211b; --texto:#243029; --muted:#66756b; --tenue:#a8b7ac;
-  --linea:#dfe9e1; --linea-fuerte:#cfdcd2; --linea-suave:#ebf2ed;
+  --linea:#d6ecde; --linea-fuerte:#c0dfcc; --linea-suave:#e4f4ea;
   /* Superficies */
-  --fondo:#e5f0e7;          /* verde pastel de fondo */
-  --fondo-hundido:#d5e6d9;  /* un tono más, para pistas y botones sobre el fondo */
+  --fondo:#c8f0d6;          /* verde pastel de fondo */
+  --fondo-hundido:#b4e3c6;  /* un tono más, para pistas y botones sobre el fondo */
   --blanco:#fff;            /* superficies de trabajo (tarjetas, tablas, diálogos) */
-  --encabezado:#eef6f0;     /* encabezado de las tablas */
-  --hover:#eaf4ed;          /* fila o celda bajo el mouse */
+  --encabezado:#ecf9f1;     /* encabezado de las tablas */
+  --hover:#e4f6ec;          /* fila o celda bajo el mouse */
   --seleccion:rgba(33,115,70,.09); --rango:#217346; /* como la selección de Excel */
   /* Estados */
   --alerta:#b3261e; --alerta-suave:#fbe9e7;
