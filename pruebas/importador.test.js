@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const XLSX = require('xlsx');
-const { leerPlanilla, _interno: I } = require('../js/importador-planilla');
+const { leerPlanilla, planActualizacion, _interno: I } = require('../js/importador-planilla');
 
 const ENC1 = ['d', 'Fecha Orden', 'Proveedor', 'Código', 'Nombre', 'Cantidad', 'Precio Unit.', 'Estado', 'Tipo', 'Variantes', 'Llego', 'Cód. Barra',
   'Foto', 'Descripción OK', 'Cargado Web', 'Catálogo', 'Fecha Alta Web', 'Sin Stock', 'Observaciones', 'Título Web', 'Descripción Web', 'Estado Descripción', 'Ya no está en la página'];
@@ -129,4 +129,45 @@ test('planilla real (si está en datos-privados)', { skip: !fs.existsSync(REAL) 
     for (const l of o.lineas) { assert.ok(l.cantidad > 0); assert.ok(r.articulos.some(a => a.codigo === l.codigo)); }
   }
   assert.equal(new Set(r.articulos.map(a => a.codigo)).size, r.articulos.length, 'códigos repetidos');
+});
+
+test('actualizar con una planilla más nueva: renombres de códigos, campos que cambiaron, llegadas y líneas que ya no van', () => {
+  // La primera importación leyó "4.730.400.006" (formato de la celda); la planilla nueva trae el valor real
+  const anterior = leerPlanilla(XLSX, libro([
+    { ...base, 'Código': '4.730.400.006', Nombre: 'BOLSO', Cantidad: 10, 'Precio Unit.': 100, Llego: 'FALSE', 'Cargado Web': 'FALSE', Foto: 'FALSE' },
+    { ...base, 'Código': '3440006-NEG', Nombre: 'SUELTA', Cantidad: 4, 'Precio Unit.': 5, Tipo: 'VARIANTE', Variantes: 'NEGRO', Llego: 'TRUE' },
+    { ...base, 'Código': '9.999', Nombre: 'DUP', Cantidad: 2, Llego: 'FALSE' },
+    { ...base, 'Código': '9999', Nombre: 'DUP', Cantidad: 3, Llego: 'FALSE' },
+    { ...base, 'Código': '8000', Nombre: 'IGUAL', Cantidad: 1, Llego: 'FALSE' },
+  ]));
+  const nueva = leerPlanilla(XLSX, libro([
+    { ...base, 'Código': 4730400006, Nombre: 'BOLSO', Cantidad: 10, 'Precio Unit.': 100, Llego: 'TRUE', 'Cargado Web': 'TRUE', Foto: 'TRUE', 'Título Web': 'Bolso lindo' },
+    { ...base, 'Código': '3440006', Nombre: 'PADRE NUEVO', Cantidad: 4, 'Precio Unit.': 5 },
+    { ...base, 'Código': '3440006-NEG', Nombre: 'SUELTA', Cantidad: 4, 'Precio Unit.': 5, Tipo: 'VARIANTE', Variantes: 'NEGRO', Llego: 'TRUE' },
+    { ...base, 'Código': 9999, Nombre: 'DUP', Cantidad: 2, Llego: 'FALSE' },
+    { ...base, 'Código': '9999', Nombre: 'DUP', Cantidad: 3, Llego: 'FALSE' },
+    { ...base, 'Código': '8000', Nombre: 'IGUAL', Cantidad: 1, 'Precio Unit.': 9, Llego: 'FALSE' },
+    { ...base, d: '3333-00001900', 'Fecha Orden': '01/06/2026', 'Código': 'NUEVO1', Nombre: 'ARTICULO NUEVO', Cantidad: 5 },
+  ]));
+  const p = planActualizacion(anterior, nueva);
+  assert.deepEqual(p.renombres, [{ de: '4.730.400.006', a: '4730400006' }, { de: '9.999', a: '9999' }]);
+  assert.deepEqual(p.articulosNuevos.map(a => a.codigo).sort(), ['3440006', 'NUEVO1']);
+  assert.deepEqual(p.ordenesNuevas.map(o => o.numero), ['3333-00001900']);
+  // solo los campos que cambiaron en la planilla; lo demás no se toca
+  const bolso = p.doc.articulos.find(a => a.codigo === '4730400006');
+  assert.deepEqual(Object.keys(bolso.campos).sort(), ['cargado_web', 'foto', 'titulo_web']);
+  // la variante suelta ahora cuelga de su principal
+  assert.deepEqual(p.doc.articulos.find(a => a.codigo === '3440006-NEG').campos, { padre: '3440006', color: 'NEG' });
+  assert.ok(!p.doc.articulos.some(a => a.codigo === '8000'), 'sin cambios en el artículo');
+  // órdenes que ya estaban
+  assert.deepEqual(p.doc.llegadas, [{ orden: '3333-00001797', codigo: '4730400006', indice: 0 }]);
+  assert.deepEqual(p.doc.lineas_precio, [{ orden: '3333-00001797', codigo: '8000', indice: 0, precio_unitario: 9 }]);
+  assert.deepEqual(p.doc.lineas_quitadas, [{ orden: '3333-00001797', codigo: '3440006-NEG', indice: 0 }]); // ahora es variante: sin línea propia
+  assert.deepEqual(p.doc.lineas_nuevas.map(l => [l.orden, l.codigo, l.cantidad, l.indice]), [['3333-00001797', '3440006', 4, 0]]); // el principal nuevo trae su línea
+  assert.deepEqual([p.resumen.renombres, p.resumen.llegadas, p.resumen.lineasQuitadas, p.resumen.desllegadas], [2, 1, 1, 0]);
+  // una línea que figuraba llegada y ahora no: no se toca, se avisa
+  const llego = leerPlanilla(XLSX, libro([{ ...base, 'Código': '8000', Nombre: 'X', Cantidad: 1, Llego: 'TRUE' }]));
+  const noLlego = leerPlanilla(XLSX, libro([{ ...base, 'Código': '8000', Nombre: 'X', Cantidad: 1, Llego: 'FALSE' }]));
+  const atras = planActualizacion(llego, noLlego);
+  assert.deepEqual([atras.resumen.desllegadas, atras.doc.llegadas.length, atras.avisos.length], [1, 0, 1]);
 });

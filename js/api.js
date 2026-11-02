@@ -259,6 +259,13 @@
       ]);
       return { codigos: new Set(arts.map(a => a.codigo)), ordenes: new Set(ords.map(o => o.numero)) };
     },
+    // Actualizar lo ya cargado con una planilla más nueva (ver planActualizacion). simular = true: informa y no guarda.
+    async sincronizar(doc, simular) {
+      const { data, error } = await sb.rpc("sincronizar_planilla", { p_doc: doc, p_simular: !!simular });
+      if (error) throw new Error(mensaje(error));
+      if (!simular) await invalidar();
+      return data;
+    },
     // Un lote: { colores, articulos, ordenes }
     async enviar(doc) {
       const { data, error } = await sb.rpc("importar_planilla", { p_doc: doc });

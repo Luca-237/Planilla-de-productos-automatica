@@ -260,7 +260,79 @@
     return { articulos, ordenes, colores, resumen, avisos };
   }
 
-  const api = { leerPlanilla, _interno: { aNumero, aFecha, aBool, clasificarTextos, clave } };
+  // ---------- Actualizar con una versión más nueva ----------
+  // Compara la planilla anterior (la que ya se importó) con la nueva y arma lo que hay que hacer en la base:
+  //   - artículos y órdenes nuevos (se cargan con importar_planilla);
+  //   - renombres de código: la primera importación leyó "4.730.400.006" (formato de la celda) en vez del valor
+  //     real 4730400006; un código que ya no está pero que sin puntos sí está, es el mismo;
+  //   - campos de artículo que cambiaron (solo esos: lo demás, que pudo editarse en el sistema, no se toca);
+  //   - de las órdenes que ya estaban: líneas nuevas, precios, lo que llegó y las líneas que ya no van.
+  const CAMPOS_ARTICULO = ['descripcion', 'proveedor', 'tipo', 'padre', 'color', 'variantes', 'foto', 'descripcion_ok', 'cargado_web',
+    'catalogo', 'sin_stock', 'ya_no_esta', 'fecha_alta_web', 'observaciones', 'titulo_web', 'descripcion_web', 'estado_descripcion'];
+  const igual = (x, y) => JSON.stringify(x ?? null) === JSON.stringify(y ?? null);
+
+  function planActualizacion(anterior, nueva) {
+    const codigosNuevos = new Set(nueva.articulos.map(x => x.codigo));
+    const renombres = [], ren = new Map();
+    for (const x of anterior.articulos) {
+      if (codigosNuevos.has(x.codigo)) continue;
+      const sinPuntos = x.codigo.replace(/[.]/g, '');
+      if (sinPuntos !== x.codigo && codigosNuevos.has(sinPuntos)) { ren.set(x.codigo, sinPuntos); renombres.push({ de: x.codigo, a: sinPuntos }); }
+    }
+    const mapa = c => ren.get(c) || c;
+
+    // Lo que ya está cargado, con los códigos ya corregidos (si dos se juntan, vale el que ya tenía ese código)
+    const base = new Map();
+    for (const x of anterior.articulos) {
+      const k = mapa(x.codigo);
+      if (!base.has(k) || x.codigo === k) base.set(k, { ...x, codigo: k, padre: x.padre ? mapa(x.padre) : x.padre });
+    }
+    const articulosNuevos = nueva.articulos.filter(x => !base.has(x.codigo));
+    const articulos = [];
+    for (const x of nueva.articulos) {
+      const w = base.get(x.codigo);
+      if (!w) continue;
+      const campos = {};
+      for (const k of CAMPOS_ARTICULO) if (!igual(w[k], x[k])) campos[k] = x[k];
+      if (Object.keys(campos).length) articulos.push({ codigo: x.codigo, campos });
+    }
+
+    // Órdenes
+    const ordenesBase = new Map(anterior.ordenes.map(o => [o.numero, { ...o, lineas: o.lineas.map(l => ({ ...l, codigo: mapa(l.codigo) })) }]));
+    const clave = (l, i, arr) => l.codigo + '#' + arr.slice(0, i).filter(y => y.codigo === l.codigo).length;
+    const lineas_nuevas = [], lineas_precio = [], llegadas = [], lineas_quitadas = [];
+    let desllegadas = 0;
+    const ordenesNuevas = nueva.ordenes.filter(o => !ordenesBase.has(o.numero));
+    for (const o of nueva.ordenes) {
+      const v = ordenesBase.get(o.numero);
+      if (!v) continue;
+      const enBase = new Map(v.lineas.map((l, i, arr) => [clave(l, i, arr), { l, indice: arr.slice(0, i).filter(y => y.codigo === l.codigo).length }]));
+      const vistas = new Set();
+      o.lineas.forEach((l, i, arr) => {
+        const k = clave(l, i, arr), w = enBase.get(k);
+        if (!w) { lineas_nuevas.push({ orden: o.numero, ...l, indice: arr.slice(0, i).filter(y => y.codigo === l.codigo).length }); return; }
+        vistas.add(k);
+        const ref = { orden: o.numero, codigo: l.codigo, indice: w.indice };
+        if (!w.l.llego && l.llego) llegadas.push(ref);
+        if (w.l.llego && !l.llego) desllegadas++;
+        if (l.precio_unitario != null && w.l.precio_unitario !== l.precio_unitario) lineas_precio.push({ ...ref, precio_unitario: l.precio_unitario });
+      });
+      // De atrás para adelante: al sacar una, las siguientes del mismo código cambian de posición
+      [...enBase.entries()].filter(([k]) => !vistas.has(k)).map(([, w]) => ({ orden: o.numero, codigo: w.l.codigo, indice: w.indice }))
+        .sort((p, q) => q.indice - p.indice).forEach(x => lineas_quitadas.push(x));
+    }
+    const avisos = [];
+    if (desllegadas) avisos.push(`${desllegadas} líneas figuraban como llegadas y ahora no: no se tocan (si hay que deshacerlas, se hace a mano).`);
+    return {
+      renombres, articulosNuevos, ordenesNuevas, colores: nueva.colores,
+      doc: { renombres, articulos, lineas_nuevas, lineas_precio, llegadas, lineas_quitadas },
+      resumen: { renombres: renombres.length, articulosNuevos: articulosNuevos.length, articulosConCambios: articulos.length, ordenesNuevas: ordenesNuevas.length,
+                 lineasNuevas: lineas_nuevas.length, precios: lineas_precio.length, llegadas: llegadas.length, lineasQuitadas: lineas_quitadas.length, desllegadas },
+      avisos,
+    };
+  }
+
+  const api = { leerPlanilla, planActualizacion, _interno: { aNumero, aFecha, aBool, clasificarTextos, clave } };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else global.ImportadorPlanilla = api;
 })(typeof window !== 'undefined' ? window : globalThis);

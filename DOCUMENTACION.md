@@ -76,6 +76,16 @@ Sección **Importar planilla** del menú. Sube el **.xlsx** de la planilla "Proc
 - **Fuera del repo:** la planilla descargada va a `datos-privados/` (no se sube a GitHub).
 - Pruebas: `pruebas/importador.test.js` (lector) y la prueba de `importar_planilla` en `pruebas/base.test.mjs`.
 
+### Actualizar lo importado con una planilla más nueva
+La importación (arriba) no pisa lo que ya existe. Para ponerse al día con una versión más nueva de la planilla hay una función aparte, `sincronizar_planilla` (migración 8, solo admin, con modo simulación), y un armado del plan en `js/importador-planilla.js` (`planActualizacion(anterior, nueva)`): compara la planilla que ya se importó con la nueva y calcula **solo lo que cambió**, para no pisar lo que se trabajó en el sistema:
+- **Artículos y órdenes nuevos** (se cargan con `importar_planilla`).
+- **Renombres de código:** la primera importación leyó los códigos numéricos con el formato de la celda (`4.730.400.006`) en vez del valor real (`4730400006`). Un código que ya no está pero que sin puntos sí está, es el mismo: se renombra (las líneas y variantes lo siguen solas) y, si el código nuevo ya existía (el mismo artículo cargado dos veces), se **fusionan**.
+- **Campos de artículo que cambiaron** en la planilla (casillas, textos, fecha de alta, proveedor, principal y color de las variantes). Lo que no cambió en la planilla no se toca.
+- **Órdenes que ya estaban:** líneas nuevas, precios corregidos, **lo que llegó** (se da por recibido lo que falta, con el remito `PLANILLA-<orden>`) y las líneas que ya no van (solo si no recibieron nada de un remito real de Manager). Una línea que figuraba llegada y ahora no, no se toca: se avisa.
+- Es repetible. Se corre con la planilla anterior y la nueva descargadas como `.xlsx` (en `datos-privados/`): primero se simula (`R.api.importacion.sincronizar(plan.doc, true)`) y después se aplica en el orden renombres → nuevos → campos → líneas. Por ahora lo corre quien mantiene el sistema; no tiene pantalla.
+- **Primera actualización (2/11/2026):** 380 códigos corregidos (31 fusionados), 3 artículos y 2 órdenes nuevos, 167 artículos con cambios, 64 llegadas, 34 líneas de variantes que ya no van, 1 precio. Quedó igual a la planilla: 4.099 artículos, 357 órdenes, 3.596 líneas (3.076 recibidas y 520 pendientes, 33.706 unidades).
+- Pruebas: `pruebas/importador.test.js` (el plan) y la prueba de `sincronizar_planilla` en `pruebas/base.test.mjs`.
+
 ### Seleccionar y copiar celdas (como en Sheets)
 En la Planilla se **arrastra con el mouse** sobre las celdas para marcar un rango (filas × columnas). Se ve un borde naranja y una barra con "N filas × M columnas elegidas".
 - **Ctrl+C** (o el botón **Copiar**) copia el rango como texto con tabuladores y saltos de línea: se pega directo en una planilla u otro programa. Las casillas salen TRUE/FALSE, las fechas dd/mm/aaaa y los textos con tabuladores o saltos se entrecomillan.

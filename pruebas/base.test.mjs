@@ -376,6 +376,67 @@ test('importar la planilla anterior: solo admin, proveedor sin CUIT, lo que lleg
   assert.equal((await como(U.admin, 'select count(*)::int as n from public.proveedores'))[0].n, provAntes + 1);
 });
 
+test('actualizar con la planilla nueva: renombres, fusión, campos, llegadas, precios y líneas que ya no van', async () => {
+  const orden = '0002-00000010';
+  const lin = (codigo, cantidad, llego, precio = 10) => ({ codigo, descripcion: 'ART ' + codigo, cantidad, precio_unitario: precio, llego });
+  await como(U.admin, 'select public.importar_planilla($1)', [{
+    articulos: [
+      { codigo: '1.234.567', descripcion: 'PADRE', proveedor: 'Sync SA', tipo: 'PADRE' },
+      { codigo: '1.234.567-NEG', descripcion: 'VAR', proveedor: 'Sync SA', tipo: 'VARIANTE' },
+      { codigo: '9.999', descripcion: 'DUP1', proveedor: 'Sync SA' }, { codigo: '9999', descripcion: 'DUP2', proveedor: 'Sync SA' },
+      { codigo: 'X1', descripcion: 'X', proveedor: 'Sync SA' },
+    ],
+    ordenes: [{ numero: orden, fecha: '2026-06-01', proveedor: 'Sync SA',
+      lineas: [lin('1.234.567', 10, false), lin('1.234.567-NEG', 10, true), lin('9.999', 5, true), lin('9999', 3, false), lin('X1', 4, false)] }],
+  }]);
+  const doc = {
+    renombres: [{ de: '1.234.567', a: '1234567' }, { de: '1.234.567-NEG', a: '1234567-NEG' }, { de: '9.999', a: '9999' }, { de: 'NOEXISTE', a: 'NOEXISTE2' }],
+    articulos: [
+      { codigo: '1234567-NEG', campos: { padre: '1234567', color: 'NEG', foto: true } },
+      { codigo: 'X1', campos: { cargado_web: true, fecha_alta_web: '2026-05-01', proveedor: 'Otro Prov SA', descripcion_web: 'Texto nuevo' } },
+    ],
+    lineas_nuevas: [{ orden, ...lin('N1', 2, true, 7), indice: 0 }],
+    lineas_precio: [{ orden, codigo: 'X1', indice: 0, precio_unitario: 55.5 }],
+    llegadas: [{ orden, codigo: '1234567', indice: 0 }, { orden, codigo: '9999', indice: 1 }],
+    lineas_quitadas: [{ orden, codigo: '1234567-NEG', indice: 0 }],
+  };
+  const sinc = (usuario, simular) => como(usuario, 'select public.sincronizar_planilla($1, $2) as r', [doc, simular]).then(f => f[0].r);
+  await assert.rejects(sinc(U.carga, false), /Solo un admin/);
+  await assert.rejects(sinc(U.consulta, true), /Solo un admin/);
+  await assert.rejects(como(null, "select public.sincronizar_planilla('{}'::jsonb, true)"), /permission denied/);
+  // las funciones de adentro no se llaman directo
+  await assert.rejects(como(U.admin, "select public.aplicar_sincronizacion('{}'::jsonb)"), /permission denied/);
+  await assert.rejects(como(U.admin, 'select public.recibir_pendiente_planilla(1)'), /permission denied/);
+
+  const antes = await estadoLineas(orden);
+  // simulación: informa y no guarda
+  const sim = await sinc(U.admin, true);
+  assert.equal(sim.confirmado, false);
+  assert.deepEqual([sim.renombrados, sim.fusionados, sim.articulos_actualizados, sim.lineas_nuevas, sim.precios, sim.llegadas, sim.lineas_quitadas],
+    [2, 1, 2, 1, 1, 3, 1]);
+  assert.deepEqual(await estadoLineas(orden), antes);
+  assert.equal((await como(U.admin, "select count(*)::int as n from public.articulos where codigo = '1.234.567'"))[0].n, 1);
+
+  const r = await sinc(U.admin, false);
+  assert.equal(r.confirmado, true);
+  // los códigos quedaron sin puntos; el duplicado se fusionó; la variante quedó colgada de su principal
+  assert.deepEqual((await como(U.admin, "select codigo from public.articulos where codigo in ('1.234.567','1.234.567-NEG','9.999','1234567','1234567-NEG','9999') order by codigo")).map(x => x.codigo),
+    ['1234567', '1234567-NEG', '9999']);
+  const v = await como(U.admin, "select padre_codigo, foto, color_id is not null as color from public.articulos where codigo = '1234567-NEG'");
+  assert.deepEqual(v, [{ padre_codigo: '1234567', foto: true, color: true }]);
+  const x = await como(U.admin, "select a.cargado_web, a.fecha_alta_web::text as f, a.descripcion_web, p.nombre from public.articulos a join public.proveedores p on p.id = a.proveedor_id where a.codigo = 'X1'");
+  assert.deepEqual(x, [{ cargado_web: true, f: '2026-05-01', descripcion_web: 'Texto nuevo', nombre: 'Otro Prov SA' }]);
+  // líneas: la del padre llegó, la de la variante se fue, los dos "9999" (uno recibido y otro pendiente), X1 con su precio, N1 nueva y recibida
+  assert.deepEqual((await estadoLineas(orden)).map(l => [l.codigo, l.cantidad, l.recibido, l.estado]), [
+    ['1234567', 10, 10, 'completa'], ['9999', 5, 5, 'completa'], ['9999', 3, 3, 'completa'], ['X1', 4, 0, 'pendiente'], ['N1', 2, 2, 'completa']]);
+  assert.equal((await como(U.admin, "select precio_unitario::float8 as p from public.v_oc_lineas where orden = '0002-00000010' and codigo = 'X1'"))[0].p, 55.5);
+  // lo recibido de la línea que se fue no queda como "llegó sin orden de compra"
+  assert.equal((await como(U.admin, "select count(*)::int as n from public.v_sobrantes where codigo like '1234567%'"))[0].n, 0);
+  // repetirla no rompe nada (ya no hay nada que renombrar ni recibir)
+  const otra = await sinc(U.admin, false);
+  assert.deepEqual([otra.renombrados, otra.fusionados, otra.llegadas, otra.lineas_quitadas], [0, 0, 0, 0]);
+});
+
 test('las migraciones se pueden volver a correr sin perder datos', async () => {
   const contar = () => db.query('select (select count(*) from public.ordenes_compra)::int as oc, (select count(*) from public.recepciones)::int as rec').then(r => r.rows[0]);
   const antes = await contar();
