@@ -189,6 +189,8 @@ test('permisos: consulta mira, no carga; inactivo y sin sesión no ven nada', as
 test('permisos: carga edita los datos web del artículo; solo admin borra documentos', async () => {
   const f = await como(U.carga, "update public.articulos set descripcion_web = 'Texto web' where codigo = 'X1' returning descripcion_web, actualizado_por");
   assert.deepEqual(f, [{ descripcion_web: 'Texto web', actualizado_por: U.carga }]);
+  // quien cargó un documento lo puede borrar durante 2 horas (deshacer); pasado ese tiempo, solo un admin
+  await db.query("update public.remitos set creado_en = now() - interval '3 hours' where numero = '0009-00000004'");
   assert.equal((await como(U.carga, "delete from public.remitos where numero = '0009-00000004' returning id")).length, 0);
   assert.equal((await como(U.admin, "delete from public.remitos where numero = '0009-00000004' returning id")).length, 1);
 });
@@ -197,12 +199,14 @@ test('borrar documentos (admin): un remito devuelve sus unidades a pendientes; u
   await cargarOC(oc('0001-00000020', '2026-10-01', [['B1', 10]]));
   await cargarRemito(remito('0009-00000020', '2026-10-05', [['B1', 7]]));
   assert.equal((await estadoLineas('0001-00000020'))[0].pendiente, 3);
-  // carga no puede borrar; admin sí
+  // pasadas 2 horas, carga no puede borrar; admin sí
+  await db.query("update public.remitos set creado_en = now() - interval '3 hours' where numero = '0009-00000020'");
   assert.equal((await como(U.carga, "delete from public.remitos where numero = '0009-00000020' returning id")).length, 0);
   assert.equal((await como(U.admin, "delete from public.remitos where numero = '0009-00000020' returning id")).length, 1);
   assert.deepEqual(await estadoLineas('0001-00000020'), [{ codigo: 'B1', cantidad: 10, recibido: 0, pendiente: 10, estado: 'pendiente' }]);
   // Al borrar la OC, lo que había llegado contra ella queda "sin orden"
   await cargarRemito(remito('0009-00000021', '2026-10-06', [['B1', 4]]));
+  await db.query("update public.ordenes_compra set creado_en = now() - interval '3 hours' where numero = '0001-00000020'");
   assert.equal((await como(U.carga, "delete from public.ordenes_compra where numero = '0001-00000020' returning id")).length, 0);
   assert.equal((await como(U.admin, "delete from public.ordenes_compra where numero = '0001-00000020' returning id")).length, 1);
   assert.deepEqual(await como(U.consulta, "select codigo, sin_orden::float8 as n from public.v_sobrantes where remito = '0009-00000021'"), [{ codigo: 'B1', n: 4 }]);
@@ -435,6 +439,67 @@ test('actualizar con la planilla nueva: renombres, fusión, campos, llegadas, pr
   // repetirla no rompe nada (ya no hay nada que renombrar ni recibir)
   const otra = await sinc(U.admin, false);
   assert.deepEqual([otra.renombrados, otra.fusionados, otra.llegadas, otra.lineas_quitadas], [0, 0, 0, 0]);
+});
+
+test('remito contra una orden elegida, asignar a mano lo que llegó sin orden, desasignar y deshacer lo propio', async () => {
+  // dos órdenes abiertas del mismo proveedor con el mismo código
+  await cargarOC(oc('0003-00000001', '2026-07-01', [['AS1', 10], ['AS2', 5]]));
+  await cargarOC(oc('0003-00000002', '2026-07-02', [['AS1', 10]]));
+  const rem = (numero, lineas, orden) => ({ ...remito(numero, '2026-07-10', lineas), ...(orden ? { orden } : {}) });
+
+  // sin elegir: va a la más vieja; con una orden elegida: solo a esa
+  const auto = await cargarRemito(rem('R-AUTO', [['AS1', 4]]), false);
+  assert.deepEqual(auto.lineas[0].asignado, [{ orden: '0003-00000001', cantidad: 4 }]);
+  const elegida = await cargarRemito(rem('R-ELEGIDA', [['AS1', 4], ['ZZ9', 3]], '0003-00000002'));
+  assert.deepEqual(elegida.lineas[0].asignado, [{ orden: '0003-00000002', cantidad: 4 }]);
+  assert.equal(elegida.orden_elegida, '0003-00000002');
+  assert.equal(Number(elegida.lineas[1].sin_orden), 3, 'ZZ9 no está en ninguna orden: queda sin orden');
+  await assert.rejects(cargarRemito(rem('R-MALA', [['AS1', 1]], '0003-00099999')), /no existe o es de otro proveedor/);
+  await assert.rejects(cargarRemito(rem('', [['AS1', 1]])), /no tiene número/);
+
+  // lo que llegó sin orden se ve con lo necesario para asignarlo
+  const sob = (await como(U.carga, "select remito_linea_id, proveedor_id, codigo, sin_orden::float8 as sin from public.v_sobrantes where remito = 'R-ELEGIDA'"))[0];
+  assert.equal(sob.codigo, 'ZZ9'); assert.equal(sob.sin, 3);
+  const lineaAS2 = (await como(U.carga, "select id from public.v_oc_lineas where orden = '0003-00000001' and codigo = 'AS2'"))[0].id;
+
+  // asignar a mano a una línea con OTRO código
+  const asig = (f, o, c, u = U.carga) => como(u, 'select public.asignar_a_orden($1, $2, $3) as r', [f, o, c]).then(x => x[0].r);
+  await assert.rejects(asig(sob.remito_linea_id, lineaAS2, 4), /solo quedan 3 unidades sin orden/);
+  await assert.rejects(asig(sob.remito_linea_id, lineaAS2, 0), /mayor a 0/);
+  await assert.rejects(asig(sob.remito_linea_id, lineaAS2, 3, U.consulta), /permiso/);
+  const r1 = await asig(sob.remito_linea_id, lineaAS2, 2);
+  assert.equal(r1.orden, '0003-00000001');
+  assert.equal((await como(U.carga, "select pendiente::float8 as p from public.v_oc_lineas where id = $1", [lineaAS2]))[0].p, 3);
+  assert.equal((await como(U.carga, "select sin_orden::float8 as s from public.v_sobrantes where remito_linea_id = $1", [sob.remito_linea_id]))[0].s, 1);
+  // una orden de otro proveedor no vale
+  await cargarOC({ ...oc('0003-00000003', '2026-07-03', [['OT1', 5]]), cuit: '30777777770', proveedor: 'OTRO PROVEEDOR' });
+  const lineaOtro = (await como(U.carga, "select id from public.v_oc_lineas where orden = '0003-00000003'"))[0].id;
+  await assert.rejects(asig(sob.remito_linea_id, lineaOtro, 1), /otro proveedor/);
+  // sumar de nuevo al mismo par no rompe la restricción
+  await asig(sob.remito_linea_id, lineaAS2, 1);
+  assert.equal((await como(U.carga, "select count(*)::int as n from public.v_sobrantes where remito_linea_id = $1", [sob.remito_linea_id]))[0].n, 0);
+  // desasignar: vuelve a quedar sin orden y la orden vuelve a faltar
+  const d = await como(U.carga, 'select public.desasignar($1, $2, 1) as r', [sob.remito_linea_id, lineaAS2]).then(x => x[0].r);
+  assert.equal(d.quitado, 1);
+  assert.equal((await como(U.carga, "select sin_orden::float8 as s from public.v_sobrantes where remito_linea_id = $1", [sob.remito_linea_id]))[0].s, 1);
+  await como(U.carga, 'select public.desasignar($1, $2) as r', [sob.remito_linea_id, lineaAS2]);
+  assert.equal((await como(U.carga, "select sin_orden::float8 as s from public.v_sobrantes where remito_linea_id = $1", [sob.remito_linea_id]))[0].s, 3);
+  await assert.rejects(como(U.consulta, 'select public.desasignar($1, $2)', [sob.remito_linea_id, lineaAS2]), /permiso/);
+
+  // cambiar el número de un remito: carga sí, consulta no
+  assert.equal((await como(U.carga, "update public.remitos set numero = 'R-ELEGIDA-2' where numero = 'R-ELEGIDA' returning id")).length, 1);
+  assert.equal((await como(U.consulta, "update public.remitos set numero = 'X' where numero = 'R-ELEGIDA-2' returning id")).length, 0);
+
+  // deshacer lo propio: borrar un documento que cargó uno mismo, durante 2 horas
+  const propio = await cargarOC(oc('0003-00000004', '2026-07-04', [['UN1', 1]]));
+  assert.equal((await como(U.consulta, 'delete from public.ordenes_compra where id = $1 returning id', [propio.orden_id])).length, 0);
+  assert.equal((await como(U.carga, 'delete from public.ordenes_compra where id = $1 returning id', [propio.orden_id])).length, 1);
+  const viejo = await cargarOC(oc('0003-00000005', '2026-07-05', [['UN2', 1]]));
+  await db.query("update public.ordenes_compra set creado_en = now() - interval '3 hours' where id = $1", [viejo.orden_id]);
+  assert.equal((await como(U.carga, 'delete from public.ordenes_compra where id = $1 returning id', [viejo.orden_id])).length, 0, 'pasadas 2 horas, solo un admin');
+  assert.equal((await como(U.admin, 'delete from public.ordenes_compra where id = $1 returning id', [viejo.orden_id])).length, 1);
+  const remP = await cargarRemito(rem('R-PROPIO', [['AS1', 1]]));
+  assert.equal((await como(U.carga, 'delete from public.remitos where id = $1 returning id', [remP.remito_id])).length, 1);
 });
 
 test('las migraciones se pueden volver a correr sin perder datos', async () => {

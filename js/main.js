@@ -33,6 +33,14 @@
     refrescar() { if (vistaActual) VISTAS[vistaActual]().mostrar(); },
   };
   R.app = app;
+  // Deshacer: pila de lo último que se hizo (ver js/deshacer.js)
+  R.deshacer = window.Deshacer.crear((m, t) => R.util.toast(m, t));
+  // Anota la acción y avisa con un botón "Deshacer" por unos segundos
+  R.deshacer.registrarConAviso = (mensaje, entrada) => {
+    const id = R.deshacer.registrar(entrada);
+    R.util.toast(mensaje, "ok", 9000, { texto: "Deshacer", fn: () => R.deshacer.ejecutar(id) });
+    return id;
+  };
 
   function ir() {
     let nombre = location.hash.replace("#", "") || "pendientes";
@@ -64,6 +72,7 @@
   }
 
   function salir() {
+    R.deshacer.vaciar();
     R.estado = estadoInicial();
     vistaActual = null;
   }
@@ -94,6 +103,22 @@
       (svg ? svg.after(s) : l.prepend(s));
     });
     Object.values(VISTAS).forEach(v => v().iniciar());
+    // Deshacer: botón de la barra y Ctrl+Z (fuera de los campos de texto, donde Ctrl+Z deshace lo escrito)
+    const botonDeshacer = $("btn-deshacer");
+    const pintarDeshacer = () => {
+      const u = R.deshacer.ultimo();
+      botonDeshacer.disabled = !u;
+      botonDeshacer.title = u ? `Deshacer (Ctrl+Z): ${u.texto}` : "Deshacer (Ctrl+Z): no hay nada para deshacer";
+    };
+    R.deshacer.alCambiar(pintarDeshacer);
+    botonDeshacer.addEventListener("click", () => R.deshacer.deshacerUltimo());
+    document.addEventListener("keydown", e => {
+      if (!((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z")) return;
+      if (e.target.closest && e.target.closest("input, textarea, select, [contenteditable]")) return;
+      if (document.querySelector("dialog[open]")) return;
+      e.preventDefault();
+      R.deshacer.deshacerUltimo();
+    });
     // Descarta lo guardado en el navegador y vuelve a pedir lo de la pantalla abierta
     $("btn-actualizar").addEventListener("click", async () => {
       await R.api.cache.vaciar();

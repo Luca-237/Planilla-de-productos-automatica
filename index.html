@@ -11,9 +11,9 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;600;700&family=Karla:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%23e84e1b'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='Georgia,serif' font-size='20' fill='%23fff'%3EC%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="css/app.css?v=20261029.25">
+<link rel="stylesheet" href="css/app.css?v=20261029.27">
 <!-- El color de fondo elegido se aplica después de la hoja de estilos (para pisarla) y antes de dibujar, así no parpadea -->
-<script src="js/color.js?v=20261029.25"></script>
+<script src="js/color.js?v=20261029.27"></script>
 <script>try { ColorFondo.aplicar(ColorFondo.leer()); } catch (e) {}</script>
 </head>
 <body>
@@ -77,6 +77,7 @@
       <span><span class="titulo">Compras</span><span class="sub">Cindy Mayorista · Mercadería</span></span>
     </div>
     <button type="button" class="btn-tema" id="btn-actualizar" aria-label="Actualizar los datos" title="Actualizar los datos desde la base (se guardan en este navegador para ir más rápido)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>
+    <button type="button" class="btn-tema" id="btn-deshacer" aria-label="Deshacer" title="Deshacer (Ctrl+Z): no hay nada para deshacer" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg></button>
     <button type="button" class="btn-tema" data-tema-boton aria-label="Tema: automático" title="Tema: automático"></button>
     <div class="usuario">
       <span class="quien"><span id="usuario-nombre"></span><span class="rol" id="usuario-rol"></span></span>
@@ -454,6 +455,20 @@
   </div>
 </dialog>
 
+<!-- ============ Diálogo: asignar lo que llegó sin orden a una orden de compra ============ -->
+<dialog class="dlg ancho" id="dlg-asignar">
+  <div class="dlg-head"><h3>Asignar a una orden de compra</h3>
+    <button type="button" class="btn-cerrar" data-cerrar aria-label="Cerrar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+  </div>
+  <div class="dlg-body">
+    <dl class="ficha-datos" id="asignar-ficha"></dl>
+    <label for="asignar-buscar">Buscar la línea de la orden (por número de orden, código o descripción)</label>
+    <input id="asignar-buscar" placeholder="Ej. 3333-00002150, 855338 o BROCHE" autocomplete="off">
+    <div class="tabla-wrap" style="margin-top:10px"><table class="tabla grilla" id="asignar-tabla"></table></div>
+    <p class="hint">Salen las órdenes abiertas de este proveedor con unidades pendientes. Se puede elegir una línea con otro código: sirve cuando el remito trae un artículo que en la orden figura distinto.</p>
+  </div>
+</dialog>
+
 <!-- ============ Diálogo: armar catálogo ============ -->
 <dialog class="dlg ancho" id="dlg-catalogo">
   <div class="dlg-head"><h3>Armar catálogo</h3>
@@ -538,26 +553,27 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
-<script src="js/config.js?v=20261029.25"></script>
-<script src="js/utils.js?v=20261029.25"></script>
-<script src="js/lector-manager.js?v=20261029.25"></script>
-<script src="js/catalogo-formato.js?v=20261029.25"></script>
-<script src="js/importador-planilla.js?v=20261029.25"></script>
-<script src="js/cache.js?v=20261029.25"></script>
-<script src="js/api.js?v=20261029.25"></script>
+<script src="js/config.js?v=20261029.27"></script>
+<script src="js/utils.js?v=20261029.27"></script>
+<script src="js/lector-manager.js?v=20261029.27"></script>
+<script src="js/deshacer.js?v=20261029.27"></script>
+<script src="js/catalogo-formato.js?v=20261029.27"></script>
+<script src="js/importador-planilla.js?v=20261029.27"></script>
+<script src="js/cache.js?v=20261029.27"></script>
+<script src="js/api.js?v=20261029.27"></script>
 
-<script src="js/vistas/acceso.js?v=20261029.25"></script>
-<script src="js/vistas/pendientes.js?v=20261029.25"></script>
-<script src="js/vistas/cargar.js?v=20261029.25"></script>
-<script src="js/vistas/catalogo.js?v=20261029.25"></script>
-<script src="js/vistas/planilla.js?v=20261029.25"></script>
-<script src="js/vistas/colores.js?v=20261029.25"></script>
-<script src="js/vistas/proveedores.js?v=20261029.25"></script>
-<script src="js/vistas/documentos.js?v=20261029.25"></script>
-<script src="js/vistas/usuarios.js?v=20261029.25"></script>
-<script src="js/vistas/importar.js?v=20261029.25"></script>
-<script src="js/vistas/configuracion.js?v=20261029.25"></script>
+<script src="js/vistas/acceso.js?v=20261029.27"></script>
+<script src="js/vistas/pendientes.js?v=20261029.27"></script>
+<script src="js/vistas/cargar.js?v=20261029.27"></script>
+<script src="js/vistas/catalogo.js?v=20261029.27"></script>
+<script src="js/vistas/planilla.js?v=20261029.27"></script>
+<script src="js/vistas/colores.js?v=20261029.27"></script>
+<script src="js/vistas/proveedores.js?v=20261029.27"></script>
+<script src="js/vistas/documentos.js?v=20261029.27"></script>
+<script src="js/vistas/usuarios.js?v=20261029.27"></script>
+<script src="js/vistas/importar.js?v=20261029.27"></script>
+<script src="js/vistas/configuracion.js?v=20261029.27"></script>
 
-<script src="js/main.js?v=20261029.25"></script>
+<script src="js/main.js?v=20261029.27"></script>
 </body>
 </html>

@@ -34,6 +34,9 @@
     if (/JWT expired/i.test(m)) return "La sesión venció. Volvé a ingresar.";
     if (/violates foreign key/i.test(m)) return "No se puede: hay datos relacionados que dependen de esto.";
     if (/cancelada_check|cancelada <= cantidad/i.test(m)) return "No se pueden cancelar más unidades de las pedidas.";
+    if (/ordenes_compra_numero_key|duplicate key.*ordenes_compra/i.test(m)) return "Ya hay una orden de compra con ese número.";
+    if (/ordenes_compra_numero_check/i.test(m)) return "El número de la orden tiene que tener el formato 0000-00000000.";
+    if (/remitos_proveedor_id_numero_key|duplicate key.*remitos/i.test(m)) return "Ya hay un remito de ese proveedor con ese número.";
     if (/colores_codigo_key|duplicate key.*colores/i.test(m)) return "Ya hay un color con ese sufijo.";
     if (/colores_codigo_check/i.test(m)) return "El sufijo tiene que ser de 2 a 5 letras o números, sin espacios (ej. WHI).";
     return m;
@@ -96,6 +99,14 @@
     },
   };
 
+  // Deshacer una carga: borra el documento recién cargado (quien lo cargó, hasta 2 horas después; un admin, siempre)
+  documentos.deshacer = async (tipo, id) => {
+    const tabla = tipo === "orden_compra" ? "ordenes_compra" : "remitos";
+    const hechas = chequear(await sb.from(tabla).delete().eq("id", id).select("id"));
+    if (!hechas.length) throw new Error("No se pudo deshacer: ya pasaron más de 2 horas desde la carga (lo puede borrar un admin) o ya no existe.");
+    await invalidar();
+  };
+
   // ---------- Consultas ----------
   const vistas = {
     // opciones.alActualizar(datos): la pantalla se abre con lo guardado y se avisa si llegan datos más nuevos
@@ -111,6 +122,7 @@
       .select("id, numero, fecha, proveedor_id, vencimiento, comprador, descuento_porcentaje, total, modalidad_facturacion, cerrada, motivo_cierre, observaciones, creado_en, proveedores(nombre, nombre_corto, cuit)")
       .order("fecha", { ascending: false }).order("numero", { ascending: false }))),
     async actualizar(id, d) { chequear(await sb.from("ordenes_compra").update(d).eq("id", id)); await invalidar(); },
+    renumerar: async (id, numero) => ordenes.actualizar(id, { numero: String(numero).trim() }),
     async eliminar(id) { chequear(await sb.from("ordenes_compra").delete().eq("id", id)); await invalidar(); },
     async cancelarUnidades(lineaId, cancelada) { chequear(await sb.from("oc_lineas").update({ cancelada }).eq("id", lineaId)); await invalidar(); },
   };
@@ -120,6 +132,30 @@
       .select("id, numero, fecha, proveedor_id, total, creado_en, proveedores(nombre, nombre_corto, cuit), remito_lineas(cantidad)")
       .order("fecha", { ascending: false }).order("numero", { ascending: false }))),
     async eliminar(id) { chequear(await sb.from("remitos").delete().eq("id", id)); await invalidar(); },
+    async renumerar(id, numero) {
+      const h = chequear(await sb.from("remitos").update({ numero: String(numero).trim() }).eq("id", id).select("id"));
+      if (!h.length) throw new Error("No se guardó: no tenés permiso o el remito ya no existe.");
+      await invalidar();
+    },
+  };
+
+  // ---------- Asignar lo que llegó a una orden a mano ----------
+  const asignaciones = {
+    // Líneas de órdenes abiertas de un proveedor que todavía esperan mercadería (siempre de la base, sin caché)
+    lineasAbiertas: proveedorId => todo(() => sb.from("v_oc_lineas")
+      .select("id, orden, fecha_orden, codigo, descripcion, cantidad, recibido, pendiente")
+      .eq("proveedor_id", proveedorId).eq("cerrada", false).gt("pendiente", 0)
+      .order("fecha_orden").order("orden").order("renglon")).then(numeros),
+    async asignar(remitoLineaId, ocLineaId, cantidad) {
+      const r = chequear(await sb.rpc("asignar_a_orden", { p_remito_linea: remitoLineaId, p_oc_linea: ocLineaId, p_cantidad: cantidad }));
+      await invalidar();
+      return r;
+    },
+    async quitar(remitoLineaId, ocLineaId, cantidad) {
+      const r = chequear(await sb.rpc("desasignar", { p_remito_linea: remitoLineaId, p_oc_linea: ocLineaId, p_cantidad: cantidad ?? null }));
+      await invalidar();
+      return r;
+    },
   };
 
   // ---------- Proveedores (nombre corto: Target, Bagcherry…) ----------
@@ -301,5 +337,5 @@
     resetearPassword: (id, password) => usuarios.llamar("resetear_password", { id, password }),
   };
 
-  R.api = { configurado, iniciar, auth, documentos, vistas, ordenes, remitos, proveedores, articulos, colores, preferencias, usuarios, web, importacion, cache };
+  R.api = { configurado, iniciar, auth, documentos, vistas, ordenes, remitos, proveedores, articulos, colores, preferencias, usuarios, web, importacion, cache, asignaciones };
 })(window.COMPRAS);

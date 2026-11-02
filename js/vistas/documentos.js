@@ -39,13 +39,13 @@
   }
 
   function pintarRemitos() {
-    const admin = app().esAdmin();
-    $("remitos-tabla").innerHTML = `<thead><tr><th>Remito</th><th>Fecha</th><th>Proveedor</th><th class="num">Artículos</th><th class="num">Unidades</th>${admin ? "<th></th>" : ""}</tr></thead>
+    const admin = app().esAdmin(), puede = app().puedeCargar();
+    $("remitos-tabla").innerHTML = `<thead><tr><th>Remito</th><th>Fecha</th><th>Proveedor</th><th class="num">Artículos</th><th class="num">Unidades</th>${puede || admin ? "<th></th>" : ""}</tr></thead>
       <tbody>${remitos.map(r => `<tr><td><strong>${esc(r.numero)}</strong></td><td>${fmtFecha(r.fecha)}</td>
         ${celdaProveedor(r.proveedores)}
         <td class="num">${fmtNum((r.remito_lineas || []).length)}</td>
         <td class="num">${fmtNum((r.remito_lineas || []).reduce((a, l) => a + Number(l.cantidad), 0))}</td>
-        ${admin ? `<td><div class="acciones-fila"><button type="button" class="link peligro" data-borrar-remito="${r.id}">Borrar</button></div></td>` : ""}</tr>`).join("")
+        ${puede || admin ? `<td><div class="acciones-fila">${puede ? `<button type="button" class="link" data-renumerar-remito="${r.id}">Cambiar número</button>` : ""}${admin ? `<button type="button" class="link peligro" data-borrar-remito="${r.id}">Borrar</button>` : ""}</div></td>` : ""}</tr>`).join("")
         || `<tr><td colspan="6" class="vacio">Todavía no hay remitos cargados.</td></tr>`}</tbody>`;
   }
 
@@ -72,6 +72,8 @@
     $("orden-cuerpo").innerHTML = `
       <dl class="ficha-datos">
         <div><dt>Proveedor</dt><dd><strong>${esc(nombreProveedor(o.proveedores))}</strong><br><small>${esc(o.proveedores ? o.proveedores.nombre : "")} · CUIT ${esc(o.proveedores ? o.proveedores.cuit : "")}</small></dd></div>
+        <div><dt>Número</dt><dd>${puede ? `<input id="orden-numero" value="${esc(o.numero)}" maxlength="20" aria-label="Número de la orden" style="width:150px; padding:5px 8px; font-weight:600">
+          <button type="button" class="link" id="orden-renumerar">Cambiar número</button>` : `<strong>${esc(o.numero)}</strong>`}</dd></div>
         <div><dt>Fecha</dt><dd>${fmtFecha(o.fecha)}</dd></div>
         <div><dt>Comprador</dt><dd>${esc(o.comprador || "—")}</dd></div>
         <div><dt>Total</dt><dd>${fmtPesos(o.total)}<br><small>Descuento ${fmtNum(o.descuento_porcentaje, 2)} %</small></dd></div>
@@ -104,15 +106,24 @@
   function clicDetalle(e) {
     const o = ordenes.find(x => x.id === abierta);
     if (!o) return;
-    if (e.target.id === "orden-guardar") {
-      accion(R.api.ordenes.actualizar(o.id, {
-        modalidad_facturacion: $("orden-modalidad").value || null, observaciones: $("orden-observaciones").value.trim(),
-      }), "Orden actualizada.");
+    // Cambia campos de la orden y anota cómo volver atrás
+    const cambiar = (nuevos, previos, ok, texto) => R.api.ordenes.actualizar(o.id, nuevos)
+      .then(() => { R.deshacer.registrarConAviso(ok, { texto, deshacer: async () => { await R.api.ordenes.actualizar(o.id, previos); await mostrar(); } }); return mostrar(); })
+      .catch(err => toast(err.message, "error", 6000));
+    if (e.target.id === "orden-renumerar") {
+      const nuevo = $("orden-numero").value.trim();
+      if (nuevo === o.numero) return toast("Ese ya es el número de la orden.");
+      if (!/^\d{4}-\d{8}$/.test(nuevo)) return toast("El número tiene que tener el formato 0000-00000000.", "error");
+      cambiar({ numero: nuevo }, { numero: o.numero }, `Orden ${o.numero}: ahora es la ${nuevo}.`, `cambio de número de la orden ${o.numero} a ${nuevo}`);
+    } else if (e.target.id === "orden-guardar") {
+      cambiar({ modalidad_facturacion: $("orden-modalidad").value || null, observaciones: $("orden-observaciones").value.trim() },
+        { modalidad_facturacion: o.modalidad_facturacion || null, observaciones: o.observaciones || "" },
+        "Orden actualizada.", `datos de la orden ${o.numero}`);
     } else if (e.target.id === "orden-cerrar") {
-      if (o.cerrada) return accion(R.api.ordenes.actualizar(o.id, { cerrada: false, motivo_cierre: "" }), "Orden reabierta.");
+      if (o.cerrada) return cambiar({ cerrada: false, motivo_cierre: "" }, { cerrada: true, motivo_cierre: o.motivo_cierre || "" }, "Orden reabierta.", `reabrir la orden ${o.numero}`);
       const motivo = prompt("¿Por qué se cierra? (ej. el proveedor no tiene más). Lo que falta deja de figurar como pendiente.");
       if (motivo == null) return;
-      accion(R.api.ordenes.actualizar(o.id, { cerrada: true, motivo_cierre: motivo.trim() }), "Orden cerrada.");
+      cambiar({ cerrada: true, motivo_cierre: motivo.trim() }, { cerrada: false, motivo_cierre: "" }, "Orden cerrada.", `cerrar la orden ${o.numero}`);
     } else if (e.target.id === "orden-borrar") {
       if (!confirm(`¿Borrar la orden ${o.numero}? Se borran sus artículos y lo que se le había asignado de los remitos (esas unidades pasan a "sin orden"). No se puede deshacer.`)) return;
       R.api.ordenes.eliminar(o.id).then(() => { $("dlg-orden").close(); toast("Orden borrada."); mostrar(); })
@@ -124,7 +135,11 @@
       if (v == null) return;
       const n = Number(String(v).replace(",", "."));
       if (!Number.isFinite(n) || n < 0 || n > maximo) return toast(`Tiene que ser un número entre 0 y ${fmtNum(maximo)}.`, "error");
-      accion(R.api.ordenes.cancelarUnidades(l.id, n), "Unidades actualizadas.");
+      R.api.ordenes.cancelarUnidades(l.id, n).then(() => {
+        R.deshacer.registrarConAviso("Unidades actualizadas.", { texto: `unidades canceladas de ${l.codigo} en la orden ${o.numero}`,
+          deshacer: async () => { await R.api.ordenes.cancelarUnidades(l.id, l.cancelada); await mostrar(); } });
+        return mostrar();
+      }).catch(err => toast(err.message, "error", 6000));
     }
   }
 
@@ -140,6 +155,17 @@
     });
     $("orden-cuerpo").addEventListener("click", clicDetalle);
     $("remitos-tabla").addEventListener("click", e => {
+      const rn = e.target.closest("[data-renumerar-remito]");
+      if (rn) {
+        const r = remitos.find(x => x.id === Number(rn.dataset.renumerarRemito));
+        const nuevo = prompt(`Número del remito (hoy: ${r.numero}):`, r.numero);
+        if (nuevo == null || !nuevo.trim() || nuevo.trim() === r.numero) return;
+        R.api.remitos.renumerar(r.id, nuevo).then(() => {
+          R.deshacer.registrarConAviso(`Remito ${r.numero}: ahora es ${nuevo.trim()}.`, { texto: `cambio de número del remito ${r.numero}`, deshacer: async () => { await R.api.remitos.renumerar(r.id, r.numero); await mostrar(); } });
+          return mostrar();
+        }).catch(err => toast(err.message, "error", 6000));
+        return;
+      }
       const b = e.target.closest("[data-borrar-remito]");
       if (!b) return;
       const r = remitos.find(x => x.id === Number(b.dataset.borrarRemito));

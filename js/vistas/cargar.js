@@ -2,6 +2,10 @@
 //  Vista: Cargar documentos. Cada .xls de Manager se lee en el
 //  navegador (js/lector-manager.js), la base simula la carga y muestra
 //  cómo va a quedar, y recién con "Guardar" se graba.
+//  Antes de guardar se puede cambiar el número del documento (se sugiere el
+//  que trae) y, en un remito, elegir a qué orden de compra va (o dejar que se
+//  reparta solo). Lo guardado se puede deshacer. No deja repetir un documento
+//  que ya está en la lista.
 // =====================================================================
 (function (R) {
   const { $, esc, toast, fmtFecha, fmtNum, fmtPesos, plural, ICONOS, etiquetaProveedor } = R.util;
@@ -24,25 +28,78 @@
     return doc;
   }
 
+  // Un documento es "el mismo" si coinciden tipo, proveedor y número
+  const claveDoc = d => (d ? [d.tipo, d.cuit || "", String(d.numero || "").trim()].join("|") : "");
+  const repetida = t => !!(t.doc && t.doc.numero && tarjetas.some(o => o !== t && o.estado !== "error" && o.doc && claveDoc(o.doc) === claveDoc(t.doc)));
+  const RE_OC = /^\d{4}-\d{8}$/;
+
   async function agregarArchivos(lista) {
     await recargarProveedores();
-    const nuevas = [];
+    const nuevas = [], repetidos = [];
     for (const archivo of lista) {
-      const t = { id: ++sec, archivo: archivo.name, doc: null, error: "", simulacion: null, estado: "previa" };
-      try { t.doc = await leerArchivo(archivo); }
+      const t = { id: ++sec, archivo: archivo.name, doc: null, error: "", simulacion: null, estado: "previa", numeroOriginal: "", ordenesOpc: [], modoManual: false };
+      try { t.doc = await leerArchivo(archivo); t.numeroOriginal = t.doc.numero || ""; }
       catch (e) { t.error = e.message; t.estado = "error"; }
+      // Si ese mismo documento ya está en la lista (o venía dos veces en la selección), no se agrega de nuevo
+      const igual = t.doc && [...tarjetas, ...nuevas].find(o => o.doc && claveDoc(o.doc) === claveDoc(t.doc));
+      if (igual) { repetidos.push(`"${archivo.name}" (${t.doc.tipo === "orden_compra" ? "orden" : "remito"} ${t.doc.numero}) repite a "${igual.archivo}"`); continue; }
       nuevas.push(t);
     }
+    if (repetidos.length) toast(`No se agregó: ${repetidos.join("; ")}.`, "error", 8000);
+    if (!nuevas.length) return;
     // Primero las órdenes de compra, después los remitos (el remito se cruza con las OC)
     nuevas.sort((a, b) => orden(a) - orden(b));
     tarjetas = [...nuevas, ...tarjetas];
     pintar();
-    for (const t of nuevas) await simular(t);
+    for (const t of nuevas) { cargarOrdenesAbiertas(t); await simular(t); }
+  }
+
+  // Órdenes abiertas del proveedor (para elegir a cuál va un remito)
+  async function cargarOrdenesAbiertas(t) {
+    const p = proveedorDe(t.doc);
+    if (!t.doc || t.doc.tipo !== "remito_ingreso" || !p) return;
+    try {
+      const lineas = await R.api.asignaciones.lineasAbiertas(p.id), por = new Map();
+      for (const l of lineas) {
+        const o = por.get(l.orden) || por.set(l.orden, { orden: l.orden, fecha: l.fecha_orden, pendiente: 0, articulos: 0, coincide: 0 }).get(l.orden);
+        o.pendiente += l.pendiente; o.articulos++;
+        if (t.doc.lineas.some(x => x.codigo === l.codigo)) o.coincide++;
+      }
+      // Primero las que tienen artículos de este remito
+      t.ordenesOpc = [...por.values()].sort((a, b) => b.coincide - a.coincide || a.orden.localeCompare(b.orden));
+      pintarTarjeta(t);
+    } catch (e) { /* sin sugerencias: se puede escribir el número igual */ }
+  }
+
+  // Número del documento: se sugiere el que trae y se puede cambiar
+  function cambiarNumero(t, valor) {
+    valor = String(valor).trim();
+    t.errorNumero = "";
+    if (!valor) t.errorNumero = "Escribí el número.";
+    else if (t.doc.tipo === "orden_compra" && !RE_OC.test(valor)) t.errorNumero = "El número de una orden tiene que tener el formato 0000-00000000.";
+    if (t.errorNumero) return pintarTarjeta(t);
+    t.doc.numero = valor;
+    if (repetida(t)) { t.errorNumero = "Ya hay otro documento igual en la lista (mismo número y proveedor)."; t.simulacion = null; return pintarTarjeta(t); }
+    simular(t);
+  }
+
+  // Remito: asignar solo o a una orden elegida
+  function elegirOrden(t, valor) {
+    valor = String(valor).trim();
+    t.errorOrden = "";
+    if (!valor) { delete t.doc.orden; return simular(t); }
+    if (!t.ordenesOpc.some(o => o.orden === valor)) {
+      t.errorOrden = "No hay una orden abierta de este proveedor con ese número: elegí una de la lista.";
+      return pintarTarjeta(t);
+    }
+    t.doc.orden = valor;
+    simular(t);
   }
   const orden = t => (t.doc && t.doc.tipo === "orden_compra" ? 0 : 1);
 
   async function simular(t) {
     if (!t.doc || t.estado === "guardado") return;
+    if (repetida(t)) { t.simulacion = null; t.error = "Ya hay otro documento igual en la lista (mismo número y proveedor)."; t.estado = "error"; return pintarTarjeta(t); }
     t.error = "";
     t.estado = "previa";
     pintarTarjeta(t, true);
@@ -57,7 +114,18 @@
       t.simulacion = await R.api.documentos.cargar(t.doc, true);
       t.estado = "guardado";
       await recargarProveedores();
-      toast(`${t.doc.tipo === "orden_compra" ? "Orden de compra" : "Remito"} ${t.doc.numero} guardado.`);
+      const tipoTexto = t.doc.tipo === "orden_compra" ? "Orden de compra" : "Remito";
+      // Deshacer: se borra lo recién cargado y la tarjeta vuelve a quedar para guardar
+      t.deshacerId = R.deshacer.registrarConAviso(`${tipoTexto} ${t.doc.numero} guardado.`, {
+        texto: `carga del ${tipoTexto.toLowerCase()} ${t.doc.numero}`,
+        deshacer: async () => {
+          await R.api.documentos.deshacer(t.doc.tipo, t.doc.tipo === "orden_compra" ? t.simulacion.orden_id : t.simulacion.remito_id);
+          t.estado = "previa"; t.deshacerId = null;
+          await recargarProveedores();
+          await simular(t);
+          for (const otra of tarjetas) if (otra !== t && otra.doc && otra.estado !== "guardado") await simular(otra);
+        },
+      });
       pintarTarjeta(t);
       // Lo que quedó sin guardar puede cambiar (ej. un remito que ahora encuentra su OC)
       for (const otra of tarjetas) if (otra !== t && otra.doc && otra.estado !== "guardado") await simular(otra);
@@ -95,7 +163,7 @@
     const p = proveedorDe(d), corto = p && p.nombre_corto;
     const sub = d ? `${corto ? `<strong>${esc(p.nombre_corto)}</strong> · ` : ""}${esc(d.proveedor || "Proveedor sin nombre")} · CUIT ${esc(d.cuit || "—")} · ${fmtFecha(d.fecha)} · ${esc(t.archivo)}` : "";
     const acciones = t.estado === "guardado"
-      ? `<span class="estado completa">Guardado</span>`
+      ? `<span class="estado completa">Guardado</span>${t.deshacerId ? ` <button type="button" class="link peligro" data-deshacer-carga="${t.id}">Deshacer carga</button>` : ""}`
       : `<button type="button" class="link" data-quitar="${t.id}">Descartar</button>
          ${t.estado === "previa" && t.simulacion ? `<button type="button" class="btn-sec primario" data-guardar="${t.id}">${ICONOS.check} Guardar</button>` : ""}`;
 
@@ -115,8 +183,28 @@
     if (simulando) cuerpo += `<p class="cargando">Calculando cómo queda…</p>`;
     else if (d && t.simulacion) cuerpo += d.tipo === "orden_compra" ? cuerpoOC(d, t.simulacion, corto) : cuerpoRemito(d, t.simulacion, t.estado === "guardado", corto);
 
-    el.innerHTML = `<div class="doc-cabecera"><div><h3>${titulo}</h3><p class="sub">${sub}</p></div>
-      <div class="acciones-fila">${acciones}</div></div>${cuerpo}`;
+    // Número editable mientras no se guardó (se sugiere el del documento)
+    let numero = "";
+    if (d && t.estado !== "guardado" && R.app.puedeCargar()) {
+      const cambiado = t.numeroOriginal && d.numero !== t.numeroOriginal;
+      numero = `<div class="num-doc"><label for="num-${t.id}">Número</label>
+        <input id="num-${t.id}" data-numero="${t.id}" value="${esc(d.numero || "")}" maxlength="40" placeholder="${d.tipo === "orden_compra" ? "0000-00000000" : "Número del remito"}">
+        ${cambiado ? `<button type="button" class="link" data-numero-original="${t.id}">Usar el del documento (${esc(t.numeroOriginal)})</button>` : `<small>Sugerido: el que trae el documento</small>`}</div>
+        ${t.errorNumero ? `<ul class="lista-avisos"><li>${esc(t.errorNumero)}</li></ul>` : ""}`;
+    }
+    // Remito: se reparte solo entre las órdenes abiertas o se elige a cuál va
+    let asignar = "";
+    if (d && d.tipo === "remito_ingreso" && t.estado !== "guardado" && R.app.puedeCargar()) {
+      const manual = !!d.orden || t.modoManual;
+      asignar = `<div class="asig-remito"><span class="asig-titulo">Asignar a</span>
+          <label class="cat-check"><input type="radio" name="asig-${t.id}" value="auto" data-asig="${t.id}" ${manual ? "" : "checked"}> Automático (las órdenes abiertas, de la más vieja a la más nueva)</label>
+          <label class="cat-check"><input type="radio" name="asig-${t.id}" value="manual" data-asig="${t.id}" ${manual ? "checked" : ""}> Elegir la orden</label>
+          <input id="orden-${t.id}" data-orden="${t.id}" list="dl-${t.id}" value="${esc(d.orden || "")}" placeholder="Buscar por número de orden…" autocomplete="off" ${manual ? "" : "disabled"}>
+          <datalist id="dl-${t.id}">${(t.ordenesOpc || []).map(o => `<option value="${esc(o.orden)}">${fmtFecha(o.fecha)} · ${fmtNum(o.pendiente)} unidades pendientes${o.coincide ? ` · ${o.coincide} de este remito` : ""}</option>`).join("")}</datalist>
+          ${t.errorOrden ? `<span class="texto-alerta">${esc(t.errorOrden)}</span>` : (t.ordenesOpc || []).length ? "" : `<small class="hint">No hay órdenes abiertas de este proveedor: lo que llegue queda "sin orden" y se asigna después desde Pendientes.</small>`}</div>`;
+    }
+    el.innerHTML = `<div class="doc-cabecera"><div><h3>${titulo}</h3><p class="sub">${sub}</p>${numero}</div>
+      <div class="acciones-fila">${acciones}</div></div>${asignar}${cuerpo}`;
   }
 
   function cuerpoOC(d, s, corto) {
@@ -169,7 +257,21 @@
       if (!lista.length) return toast("Solo se pueden subir archivos .xls de Manager.", "error");
       agregarArchivos(lista);
     });
+    $("cargar-lista").addEventListener("change", e => {
+      const num = e.target.closest("[data-numero]"), ord = e.target.closest("[data-orden]"), asig = e.target.closest("[data-asig]");
+      if (num) cambiarNumero(tarjetas.find(t => t.id === Number(num.dataset.numero)), num.value);
+      if (ord) elegirOrden(tarjetas.find(t => t.id === Number(ord.dataset.orden)), ord.value);
+      if (asig) {
+        const t = tarjetas.find(x => x.id === Number(asig.dataset.asig));
+        t.modoManual = asig.value === "manual";
+        if (!t.modoManual && t.doc.orden) { delete t.doc.orden; t.errorOrden = ""; simular(t); }
+        else { pintarTarjeta(t); if (t.modoManual) { const i = $("orden-" + t.id); if (i) i.focus(); } }
+      }
+    });
     $("cargar-lista").addEventListener("click", e => {
+      const orig = e.target.closest("[data-numero-original]"), des = e.target.closest("[data-deshacer-carga]");
+      if (orig) { const t = tarjetas.find(x => x.id === Number(orig.dataset.numeroOriginal)); return cambiarNumero(t, t.numeroOriginal); }
+      if (des) { const t = tarjetas.find(x => x.id === Number(des.dataset.deshacerCarga)); if (t && t.deshacerId) R.deshacer.ejecutar(t.deshacerId); return; }
       const g = e.target.closest("[data-guardar]"), q = e.target.closest("[data-quitar]"), n = e.target.closest("[data-nombre-corto]");
       if (n) guardarNombreCorto(tarjetas.find(t => t.id === Number(n.dataset.nombreCorto)), n);
       if (g) guardar(tarjetas.find(t => t.id === Number(g.dataset.guardar)), g);

@@ -73,7 +73,9 @@
 
   function aplicarRemito(doc) {
     if (!puedeCargar()) throw new Error("No tenés permiso para cargar documentos");
-    const p = proveedor(doc.cuit, doc.proveedor);
+    const p = proveedor(doc.cuit, doc.proveedor), elegida = (doc.orden || "").trim();
+    if (!String(doc.numero || "").trim()) throw new Error("El remito no tiene número");
+    if (elegida && !ordenes.some(o => o.numero === elegida && o.proveedor_id === p.id)) throw new Error(`La orden de compra ${elegida} no existe o es de otro proveedor`);
     if (remitos.some(r => r.proveedor_id === p.id && r.numero === doc.numero)) throw new Error(`El remito ${doc.numero} de este proveedor ya está cargado`);
     const rem = { id: nuevoId(), numero: doc.numero, proveedor_id: p.id, fecha: doc.fecha, total: doc.total ?? null, creado_en: new Date().toISOString() };
     remitos.push(rem);
@@ -84,7 +86,7 @@
       let resto = l.cantidad;
       const asignado = [];
       lineas.filter(x => x.codigo === l.codigo).map(x => ({ x, o: ordenes.find(o => o.id === x.orden_id) }))
-        .filter(({ o }) => o.proveedor_id === p.id && !o.cerrada)
+        .filter(({ o }) => o.proveedor_id === p.id && !o.cerrada && (!elegida || o.numero === elegida))
         .sort((a, b) => a.o.fecha.localeCompare(b.o.fecha) || a.o.numero.localeCompare(b.o.numero) || a.x.renglon - b.x.renglon)
         .forEach(({ x, o }) => {
           const pendiente = x.cantidad - x.cancelada - recibido(x);
@@ -99,7 +101,7 @@
     });
     const ocs = [...tocadas].map(id => ordenes.find(o => o.id === id)).sort((a, b) => a.numero.localeCompare(b.numero))
       .map(o => ({ orden: o.numero, pendiente: vLineas().filter(v => v.orden_id === o.id).reduce((a, v) => a + v.pendiente, 0) }));
-    return { tipo: "remito_ingreso", remito_id: rem.id, numero: doc.numero, proveedor_id: p.id, lineas: salida,
+    return { tipo: "remito_ingreso", remito_id: rem.id, numero: doc.numero, proveedor_id: p.id, orden_elegida: elegida || null, lineas: salida,
       sin_orden: salida.filter(s => s.sin_orden > 0), ordenes: ocs };
   }
 
@@ -160,7 +162,44 @@
       ingresar: async () => {}, salir: async () => {}, sesion: async () => ({ user: { id: perfil.id } }),
       alCambiar: () => {}, miPerfil: () => espera(perfil),
     },
-    documentos: { cargar: async (doc, confirmar) => { await espera(null); return copia(cargar(copia(doc), confirmar)); } },
+    documentos: {
+      cargar: async (doc, confirmar) => { await espera(null); return copia(cargar(copia(doc), confirmar)); },
+      // Deshacer una carga (la base real lo permite a quien la cargó durante 2 horas)
+      deshacer: async (tipo, id) => {
+        if (tipo === "orden_compra") {
+          const ids = lineas.filter(l => l.orden_id === id).map(l => l.id);
+          recepciones.splice(0, recepciones.length, ...recepciones.filter(r => !ids.includes(r.oc_linea_id)));
+          lineas.splice(0, lineas.length, ...lineas.filter(l => l.orden_id !== id));
+          ordenes.splice(ordenes.findIndex(o => o.id === id), 1);
+        } else {
+          const ids = remLineas.filter(l => l.remito_id === id).map(l => l.id);
+          recepciones.splice(0, recepciones.length, ...recepciones.filter(r => !ids.includes(r.remito_linea_id)));
+          remLineas.splice(0, remLineas.length, ...remLineas.filter(l => l.remito_id !== id));
+          remitos.splice(remitos.findIndex(r => r.id === id), 1);
+        }
+      },
+    },
+    asignaciones: {
+      lineasAbiertas: async proveedorId => espera(vLineas().filter(v => v.proveedor_id === proveedorId && !v.cerrada && v.pendiente > 0)
+        .map(v => ({ id: v.id, orden: v.orden, fecha_orden: v.fecha_orden, codigo: v.codigo, descripcion: v.descripcion, cantidad: v.cantidad, recibido: v.recibido, pendiente: v.pendiente }))),
+      asignar: async (remitoLineaId, ocLineaId, cantidad) => {
+        if (!puedeCargar()) sinPermiso();
+        const rl = remLineas.find(x => x.id === remitoLineaId), v = vLineas().find(x => x.id === ocLineaId);
+        const sin = rl.cantidad - recepciones.filter(r => r.remito_linea_id === rl.id).reduce((a, r) => a + r.cantidad, 0);
+        if (cantidad > sin) throw new Error(`De esa línea del remito solo quedan ${sin} unidades sin orden`);
+        if (cantidad > v.pendiente) throw new Error(`La línea de OC recibiría más de lo pendiente (${v.pendiente})`);
+        const ya = recepciones.find(r => r.remito_linea_id === remitoLineaId && r.oc_linea_id === ocLineaId);
+        if (ya) ya.cantidad += cantidad; else recepciones.push({ id: nuevoId(), remito_linea_id: remitoLineaId, oc_linea_id: ocLineaId, cantidad });
+        return { orden: v.orden, cantidad };
+      },
+      quitar: async (remitoLineaId, ocLineaId, cantidad) => {
+        const i = recepciones.findIndex(r => r.remito_linea_id === remitoLineaId && r.oc_linea_id === ocLineaId);
+        if (i < 0) return { quitado: 0 };
+        const r = recepciones[i], q = cantidad == null || cantidad >= r.cantidad ? r.cantidad : cantidad;
+        if (q === r.cantidad) recepciones.splice(i, 1); else r.cantidad -= q;
+        return { quitado: q };
+      },
+    },
     vistas: {
       pendientes: () => espera(vLineas().filter(v => ["pendiente", "parcial"].includes(v.estado)).sort((a, b) => a.fecha_orden.localeCompare(b.fecha_orden))),
       lineas: () => espera(vLineas()),
@@ -180,7 +219,7 @@
         const sin = rl.cantidad - recepciones.filter(r => r.remito_linea_id === rl.id).reduce((a, r) => a + r.cantidad, 0);
         const pv = proveedores.find(p => p.id === m.proveedor_id);
         return { remito_id: m.id, remito: m.numero, fecha: m.fecha, proveedor: alias(pv), razon_social: pv.nombre,
-          codigo: rl.codigo, descripcion: rl.descripcion, cantidad: rl.cantidad, sin_orden: sin };
+          codigo: rl.codigo, descripcion: rl.descripcion, cantidad: rl.cantidad, sin_orden: sin, remito_linea_id: rl.id, proveedor_id: m.proveedor_id };
       }).filter(s => s.sin_orden > 0)),
     },
     ordenes: {
@@ -195,8 +234,15 @@
         ordenes.splice(ordenes.findIndex(o => o.id === id), 1);
       },
       cancelarUnidades: async (id, n) => { if (!puedeCargar()) sinPermiso(); lineas.find(l => l.id === id).cancelada = n; },
+      renumerar: async (id, numero) => {
+        if (!puedeCargar()) sinPermiso();
+        if (!/^d{4}-d{8}$/.test(numero)) throw new Error("El número de la orden tiene que tener el formato 0000-00000000.");
+        if (ordenes.some(o => o.numero === numero && o.id !== id)) throw new Error("Ya hay una orden de compra con ese número.");
+        ordenes.find(o => o.id === id).numero = numero;
+      },
     },
     remitos: {
+      renumerar: async (id, numero) => { if (!puedeCargar()) sinPermiso(); remitos.find(r => r.id === id).numero = String(numero).trim(); },
       listar: () => espera(remitos.map(r => ({ ...r, proveedores: proveedores.find(p => p.id === r.proveedor_id),
         remito_lineas: remLineas.filter(l => l.remito_id === r.id).map(l => ({ cantidad: l.cantidad })) })).sort((a, b) => b.fecha.localeCompare(a.fecha))),
       eliminar: async id => {

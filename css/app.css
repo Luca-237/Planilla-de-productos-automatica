@@ -510,3 +510,19 @@ a.web-chip:hover { text-decoration:underline; }
 .tabla tr.esp td, .tabla.grilla tr.esp td { padding:0; border:0; box-shadow:none; background:none; }
 #planilla-tabla td { overflow-wrap:anywhere; }
 #planilla-tabla .tabla-wrap, .tabla-wrap { overscroll-behavior:contain; }
+
+/* Aviso con botón (ej. "Deshacer") */
+.toast-accion { margin-left:14px; padding:2px 10px; border:1px solid currentColor; border-radius:var(--r-pill); background:transparent; color:inherit; font:600 13px/1.4 var(--display); cursor:pointer; }
+.toast-accion:hover { background:rgba(255,255,255,.15); }
+.btn-tema:disabled { opacity:.4; cursor:default; }
+.btn-tema:disabled:hover { color:var(--texto); }
+/* Cargar documentos: número y orden elegibles */
+.num-doc { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:6px; }
+.num-doc label { margin:0; }
+.num-doc input { width:190px; padding:6px 9px; font-weight:600; }
+.num-doc small { color:var(--muted); }
+.asig-remito { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin:8px 0 12px; padding:10px 14px; border-radius:var(--r-sm); background:var(--hover); }
+.asig-remito .asig-titulo { font:600 12px/1 var(--display); letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+.asig-remito input[type=text], .asig-remito input:not([type]) { width:230px; padding:6px 9px; }
+#asignar-tabla input { width:80px; padding:5px 8px; }
+.tag-mismo { display:inline-block; margin-left:6px; padding:1px 8px; border-radius:var(--r-pill); background:var(--verde-suave); color:var(--verde); font:600 11px/1.5 var(--display); }

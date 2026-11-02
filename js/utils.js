@@ -30,9 +30,15 @@ window.COMPRAS = window.COMPRAS || {};
   const plural = (n, uno, varios) => `${fmtNum(n)} ${n === 1 ? uno : varios}`;
 
   let timerToast;
-  function toast(mensaje, tipo = "ok", ms = 3500) {
+  // accion: { texto, fn } agrega un botón al aviso (ej. "Deshacer")
+  function toast(mensaje, tipo = "ok", ms = 3500, accion) {
     const el = $("toast");
-    el.textContent = mensaje;
+    if (accion) {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "toast-accion"; b.textContent = accion.texto;
+      b.addEventListener("click", () => { el.hidden = true; accion.fn(); });
+      el.replaceChildren(document.createTextNode(mensaje), b);
+    } else el.textContent = mensaje;
     el.classList.toggle("error", tipo === "error");
     el.hidden = false;
     clearTimeout(timerToast);

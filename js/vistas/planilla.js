@@ -103,8 +103,11 @@
       if (falta === "web_no") return f.web_estado === "no_esta";
       return ["sin_stock", "ya_no_esta"].includes(falta) ? !!f[falta] : !f[falta];
     };
-    return filas.filter(f => (!prov || f.proveedor === prov) && (!est || f.estado === est) && pasa(f)
+    const lista = filas.filter(f => (!prov || f.proveedor === prov) && (!est || f.estado === est) && pasa(f)
       && (!q || norm(`${f.codigo} ${f.nombre} ${f.orden} ${f.proveedor} ${f.razon_social || ""}`).includes(q)));
+    // "Subir a la página" es una lista de trabajo: cada artículo una sola vez, aunque esté en varias órdenes (queda la más nueva)
+    if (falta === "subir_web") { const vistos = new Set(); return lista.filter(f => !vistos.has(f.codigo) && vistos.add(f.codigo)); }
+    return lista;
   }
 
   // ---------- Filas a pedido (la tabla tiene miles de filas: solo se dibujan las que se ven) ----------
@@ -422,6 +425,21 @@
     R.vistaCatalogo.iniciar();
   }
 
+  // ---------- Deshacer ----------
+  // lista: [{ codigo, antes: { campo: valorAnterior, … } }]. Al deshacer se vuelven a guardar esos valores.
+  function registrarDeshacer(texto, lista) {
+    const campos = [...new Set(lista.flatMap(x => Object.keys(x.antes)))];
+    R.deshacer.registrar({ texto, deshacer: async () => {
+      const grupos = new Map();
+      lista.forEach(x => { const k = JSON.stringify(x.antes); (grupos.get(k) || grupos.set(k, { antes: x.antes, codigos: [] }).get(k)).codigos.push(x.codigo); });
+      for (const g of grupos.values()) {
+        await R.api.articulos.actualizarVarios(g.codigos, g.antes);
+        Object.entries(g.antes).forEach(([k, v]) => aplicarLocal(g.codigos, k, v));
+      }
+      refrescarCeldas(lista.map(x => x.codigo), campos);
+    } });
+  }
+
   // ---------- Casillas ----------
   // Cambia el dato en todas las filas del mismo código (es del artículo, no de la OC)
   function aplicarLocal(codigos, campo, valor) {
@@ -431,7 +449,7 @@
 
   async function tildar(input) {
     const f = mostradas()[Number(input.closest("tr").dataset.i)];
-    const campo = input.dataset.campo, valor = input.checked, antes = !!f[campo];
+    const campo = input.dataset.campo, valor = input.checked, antes = !!f[campo], fechaAntes = f.fecha_alta_web ?? null;
     aplicarLocal([f.codigo], campo, valor);
     // Otras filas del mismo código que estén a la vista
     document.querySelectorAll("#planilla-tabla tbody tr").forEach(tr => {
@@ -441,6 +459,8 @@
     });
     try {
       const guardado = await R.api.articulos.actualizar(f.codigo, { [campo]: valor });
+      registrarDeshacer(`${TILDES[campo]} ${valor ? "marcado" : "desmarcado"} en ${f.codigo}`,
+        [{ codigo: f.codigo, antes: campo === "cargado_web" ? { cargado_web: antes, fecha_alta_web: fechaAntes } : { [campo]: antes } }]);
       // Al marcar "Cargado web" la base completa sola la fecha de alta: se muestra enseguida
       // (y el aviso "No está (estaba cargado)" depende de esta casilla)
       if (campo === "cargado_web" && guardado) aplicarLocal([f.codigo], "fecha_alta_web", guardado.fecha_alta_web);
@@ -459,7 +479,9 @@
     const nombre = TILDES[campo];
     ["seleccion-marcar", "seleccion-desmarcar"].forEach(id => { $(id).disabled = true; });
     try {
+      const previos = codigos.map(c => { const g = filas.find(x => x.codigo === c) || {}; return { codigo: c, antes: campo === "cargado_web" ? { cargado_web: !!g[campo], fecha_alta_web: g.fecha_alta_web ?? null } : { [campo]: !!g[campo] } }; });
       const hechas = await R.api.articulos.actualizarVarios(codigos, { [campo]: valor });
+      registrarDeshacer(`${nombre} ${valor ? "marcado" : "desmarcado"} en ${plural(codigos.length, "artículo", "artículos")}`, previos);
       aplicarLocal(codigos, campo, valor);
       (hechas || []).forEach(h => aplicarLocal([h.codigo], "fecha_alta_web", h.fecha_alta_web));
       toast(`${nombre}: ${valor ? "marcado" : "desmarcado"} en ${plural(codigos.length, "artículo", "artículos")}.`);
@@ -654,7 +676,9 @@
     const siguiente = lista.slice(popIndice + 1).find(x => x.codigo !== f.codigo);
     ["pop-desc-guardar", "pop-desc-seguir"].forEach(id => { $(id).disabled = true; });
     try {
+      const antesDesc = { descripcion_web: f.descripcion_web || "", descripcion_ok: !!f.descripcion_ok };
       await R.api.articulos.actualizar(f.codigo, d);
+      registrarDeshacer(`descripción de ${f.codigo}`, [{ codigo: f.codigo, antes: antesDesc }]);
       Object.entries(d).forEach(([k, v]) => aplicarLocal([f.codigo], k, v));
       cerrarPop(true);
       refrescarCeldas([f.codigo], Object.keys(d));
