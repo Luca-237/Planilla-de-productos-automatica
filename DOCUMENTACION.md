@@ -25,6 +25,7 @@ Reemplaza la carga a mano de la planilla "Proceso Ecommerce". Antonella sube la 
 
 ### Modo oscuro
 Botón redondo en la barra de arriba (y en la pantalla de ingreso) que pasa por **automático (como el sistema) → claro → oscuro**. La elección es de cada persona en su navegador (`localStorage`, clave `compras-tema`) y se aplica en el `<head>` antes de dibujar, así no parpadea. El oscuro es la versión negativa del manual de marca: fondo negro, naranja de marca, letras blancas.
+- **Estilo (2/11/2026): el mismo del Gestor de RRHH.** Fondo durazno pálido (`--fondo`), superficies blancas redondeadas con sombras suaves (`--r`, `--sombra`), botones de 8 px con brillo interno, tipografías **Google Sans** (títulos, números, botones, menú) y **Karla** (texto), chips y etiquetas en píldora, menú lateral que se recoge a solo íconos (cada opción lleva su texto en un `<span class="lateral-txt">` que arma `js/main.js`), diálogos y secciones con una animación corta que se apaga con "reducir movimiento". El modo oscuro es la versión cálida del mismo estilo (marrón muy oscuro, no negro puro). Si se cambia algo de la forma, conviene hacerlo en los dos proyectos.
 - En `css/app.css` los colores salen de tokens en `:root`; el modo oscuro los redefine en `:root[data-tema="oscuro"]` y, para el automático, dentro de `@media (prefers-color-scheme: dark)` (los dos bloques tienen los mismos valores).
 - Tokens que importan al agregar estilos: `--blanco` es el **fondo de las cajas** y `--negro` el **texto fuerte** (en oscuro se invierten); para letras sobre naranja usar `--sobre-naranja` (siempre blanco); para letras naranjas, `--naranja-texto`; verdes, grises y selección: `--verde`, `--verde-suave`, `--tenue`, `--linea-suave`, `--seleccion`. No usar colores fijos.
 
@@ -137,7 +138,7 @@ Un admin los crea desde la página (**Configuración → Usuarios**), sin entrar
 - Solo el primer admin se crea desde el panel de Supabase.
 
 ## Stack
-- **Front:** HTML + CSS + JavaScript sin frameworks, estilo Cindy (como rótulos y RRHH).
+- **Front:** HTML + CSS + JavaScript sin frameworks, estilo Cindy (el mismo del Gestor de RRHH).
 - **Lectura de los `.xls`:** en el navegador, con SheetJS (`xlsx` 0.18.5, desde cdnjs). No hace falta servidor.
 - **Back:** Supabase (Postgres + login + permisos RLS). Proyecto propio, separado de rótulos y RRHH.
 - **Hosting:** Ferozo, archivos estáticos.
@@ -193,7 +194,7 @@ npm test
 ## Estructura
 ```
 index.html                                          pantallas y diálogos
-css/app.css                                         estilos (tokens de Cindy, como rótulos y RRHH)
+css/app.css                                         estilos (tokens de Cindy, los mismos del RRHH)
 js/config.js                                        URL y clave publishable de Supabase, dominio de usuarios, diasAlerta
 js/utils.js                                         ayudas comunes (fechas, CSV, toast, íconos, estados)
 js/lector-manager.js                                lector de OC y remitos (navegador y Node)

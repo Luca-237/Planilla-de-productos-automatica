@@ -80,6 +80,18 @@
     R.util.iniciarDialogos();
     R.util.iniciarAyudas();
     A.iniciar({ alIngresar: entrar, alSalir: salir });
+    // El texto de cada opción del menú va en su propio <span> para que, con el menú recogido, queden solo los iconos
+    document.querySelectorAll(".lateral a").forEach(l => {
+      const texto = [...l.childNodes].filter(n => n.nodeType === 3 && n.textContent.trim());
+      if (!texto.length || l.querySelector(".lateral-txt")) return;
+      const s = document.createElement("span");
+      s.className = "lateral-txt";
+      s.textContent = texto.map(n => n.textContent.trim()).join(" ");
+      l.title = s.textContent;
+      texto.forEach(n => n.remove());
+      const svg = l.querySelector("svg");
+      (svg ? svg.after(s) : l.prepend(s));
+    });
     Object.values(VISTAS).forEach(v => v().iniciar());
     // Descarta lo guardado en el navegador y vuelve a pedir lo de la pantalla abierta
     $("btn-actualizar").addEventListener("click", async () => {
