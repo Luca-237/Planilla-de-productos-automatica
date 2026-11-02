@@ -9,7 +9,7 @@
 (function (R) {
   const { $, esc, norm, fmtFecha, fmtNum, fmtPesos, chipEstado, descargarCSV, hoy, toast, ESTADOS, etiquetaProveedor, plural } = R.util;
   const app = () => R.app;
-  const MAX_FILAS = 1000; // más que esto se pide filtrar (la tabla se pone lenta)
+  const MAX_FILAS = 20000; // las filas se dibujan a pedido: ya no hace falta limitarlas
 
   // Casillas que se tildan desde la tabla. Los datos web son del artículo:
   // tildar en una fila tilda todas las filas del mismo código.
@@ -105,19 +105,98 @@
       && (!q || norm(`${f.codigo} ${f.nombre} ${f.orden} ${f.proveedor} ${f.razon_social || ""}`).includes(q)));
   }
 
+  // ---------- Filas a pedido (la tabla tiene miles de filas: solo se dibujan las que se ven) ----------
+  // Con todas las filas dibujadas había más de 30.000 elementos y el desplazamiento se cortaba. Ahora se
+  // dibuja lo que se ve más unas filas de margen; arriba y abajo hay dos filas vacías ("espaciadores") que
+  // dan la altura del resto, así la barra de desplazamiento se comporta como si estuvieran todas.
+  const ALTO_ESTIMADO = 74, MARGEN_FILAS = 12;
+  const ANCHOS_COL = { codigo: 190, nombre: 230, web_estado: 130, descripcion_web: 300, orden: 150, fecha_orden: 110, proveedor: 170,
+    razon_social: 200, estado: 120, observaciones: 260, titulo_web: 230, estado_descripcion: 160, variantes: 140, ultima_recepcion: 120, fecha_alta_web: 120 };
+  const anchoCol = c => ANCHOS_COL[c.clave] || (c.clase.includes("celda-tilde") ? 96 : c.clase.includes("num") ? 100 : 120);
+  let alturas = [], acum = [0], ventana = { a: -1, b: -1 }, esperaDesplazar = 0;
+
+  function recalcularAcum() {
+    acum = new Array(alturas.length + 1);
+    acum[0] = 0;
+    for (let i = 0; i < alturas.length; i++) acum[i + 1] = acum[i] + alturas[i];
+  }
+  // Primera fila que termina después de la posición y
+  function filaEn(y) {
+    let lo = 0, hi = alturas.length - 1;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (acum[m + 1] <= y) lo = m + 1; else hi = m; }
+    return lo;
+  }
+  const filaHtml = (f, i, cols, puede) => `<tr class="${puede ? "clic" : ""} ${seleccion.has(f.codigo) ? "seleccionada" : ""} ${f.es_variante ? "fila-variante" : ""}" data-i="${i}">
+        ${puede ? `<td class="col-sel"><input type="checkbox" class="sel" ${seleccion.has(f.codigo) ? "checked" : ""} aria-label="Elegir ${esc(f.codigo)}"></td>` : ""}
+        ${cols.map(c => `<td class="${c.clase}" data-c="${c.clave}">${c.ver(f)}</td>`).join("")}</tr>`;
+
+  function renderVentana(forzar) {
+    const tabla = $("planilla-tabla"), lista = mostradas();
+    if (!lista.length || !tabla.tBodies[0]) return;
+    const w = tabla.closest(".tabla-wrap"), cols = visibles(), puede = editable();
+    const cab = tabla.tHead ? tabla.tHead.offsetHeight : 0;           // el encabezado ocupa lugar dentro del desplazamiento
+    const arriba = Math.max(0, w.scrollTop - cab), alto = w.clientHeight || 600;
+    const va = filaEn(arriba), vb = filaEn(arriba + alto) + 1;         // filas que se ven
+    // Mientras lo que se ve siga bien adentro de lo dibujado no se toca nada: se redibuja en tandas, no en cada fila
+    if (!forzar && ventana.a >= 0 && (va - ventana.a >= 4 || ventana.a === 0) && (ventana.b - vb >= 4 || ventana.b === lista.length)) return;
+    const a = Math.max(0, va - MARGEN_FILAS), b = Math.min(lista.length, vb + MARGEN_FILAS);
+    const tbody = tabla.tBodies[0], ncol = cols.length + (puede ? 1 : 0);
+    const espaciador = alto => `<tr class="esp" aria-hidden="true"><td colspan="${ncol}" style="height:${alto}px"></td></tr>`;
+    const html = (desde, hasta) => lista.slice(desde, hasta).map((fila, k) => filaHtml(fila, desde + k, cols, puede)).join("");
+    const solapa = !forzar && ventana.a >= 0 && a < ventana.b && b > ventana.a;
+    let nuevas = [];
+    if (!solapa) {
+      tbody.innerHTML = espaciador(0) + html(a, b) + espaciador(0);
+      nuevas = [...tbody.querySelectorAll("tr[data-i]")];
+    } else {
+      // Se conservan las filas que siguen a la vista: solo se sacan las que quedaron lejos y se agregan las que entran
+      const arribaEsp = tbody.firstElementChild, abajoEsp = tbody.lastElementChild;
+      while (arribaEsp.nextElementSibling !== abajoEsp && Number(arribaEsp.nextElementSibling.dataset.i) < a) arribaEsp.nextElementSibling.remove();
+      while (abajoEsp.previousElementSibling !== arribaEsp && Number(abajoEsp.previousElementSibling.dataset.i) >= b) abajoEsp.previousElementSibling.remove();
+      if (a < ventana.a) { arribaEsp.insertAdjacentHTML("afterend", html(a, Math.min(ventana.a, b))); }
+      if (b > ventana.b) { abajoEsp.insertAdjacentHTML("beforebegin", html(Math.max(ventana.b, a), b)); }
+      nuevas = [...tbody.querySelectorAll("tr[data-i]")].filter(tr => { const i = Number(tr.dataset.i); return i < ventana.a || i >= ventana.b; });
+    }
+    ventana = { a, b };
+    // Se miden las filas nuevas para que las alturas estimadas se vayan corrigiendo
+    let cambio = false;
+    nuevas.forEach(tr => {
+      const i = Number(tr.dataset.i), h = tr.offsetHeight;
+      if (h && Math.abs(h - alturas[i]) > 1) { alturas[i] = h; cambio = true; }
+    });
+    if (cambio) recalcularAcum();
+    const esp = tbody.querySelectorAll("tr.esp td");
+    esp[0].style.height = acum[a] + "px";
+    esp[1].style.height = (acum[lista.length] - acum[b]) + "px";
+    marcarRango();
+  }
+
+  // Lleva una fila a la vista aunque no esté dibujada (ej. al pasar a la descripción siguiente)
+  function asegurarFila(i) {
+    if (i >= ventana.a + 2 && i < ventana.b - 2) return;
+    const w = $("planilla-tabla").closest(".tabla-wrap");
+    w.scrollTop = Math.max(0, acum[i] - w.clientHeight / 3);
+    renderVentana(true);
+  }
+
   function pintar() {
     rango = null; // las filas pueden ser otras
     const lista = filtradas(), cols = visibles(), filasTabla = lista.slice(0, MAX_FILAS);
     const puede = editable();
     const todasElegidas = puede && filasTabla.length && filasTabla.every(f => seleccion.has(f.codigo));
-    $("planilla-tabla").innerHTML = `<thead><tr>
+    const tabla = $("planilla-tabla"), ancho = cols.reduce((n, c) => n + anchoCol(c), puede ? 38 : 0);
+    // Columnas de ancho fijo: las filas se dibujan de a pocas al desplazarse y, con ancho automático, las columnas saltarían
+    tabla.style.tableLayout = "fixed"; tabla.style.width = ancho + "px"; tabla.style.minWidth = "100%";
+    tabla.innerHTML = `<colgroup>${puede ? '<col style="width:38px">' : ""}${cols.map(c => `<col style="width:${anchoCol(c)}px">`).join("")}</colgroup><thead><tr>
         ${puede ? `<th class="col-sel"><input type="checkbox" class="sel" id="sel-todas" ${todasElegidas ? "checked" : ""} aria-label="Elegir todas las filas que se ven"></th>` : ""}
         ${cols.map(c => `<th class="${c.clase.includes("num") ? "num" : ""}">${esc(c.titulo)}</th>`).join("")}</tr></thead>
-      <tbody>${filasTabla.map((f, i) => `<tr class="${puede ? "clic" : ""} ${seleccion.has(f.codigo) ? "seleccionada" : ""} ${f.es_variante ? "fila-variante" : ""}" data-i="${i}">
-        ${puede ? `<td class="col-sel"><input type="checkbox" class="sel" ${seleccion.has(f.codigo) ? "checked" : ""} aria-label="Elegir ${esc(f.codigo)}"></td>` : ""}
-        ${cols.map(c => `<td class="${c.clase}" data-c="${c.clave}">${c.ver(f)}</td>`).join("")}</tr>`).join("")
-        || `<tr><td colspan="${cols.length + (puede ? 1 : 0)}" class="vacio">${filas.length ? "Nada coincide con el filtro." : "Todavía no hay órdenes de compra cargadas."}</td></tr>`}</tbody>`;
+      <tbody>${filasTabla.length ? "" : `<tr><td colspan="${cols.length + (puede ? 1 : 0)}" class="vacio">${filas.length ? "Nada coincide con el filtro." : "Todavía no hay órdenes de compra cargadas."}</td></tr>`}</tbody>`;
     $("planilla-tabla")._filas = filasTabla;
+    // Altura de cada fila: se estima y se corrige al medir lo dibujado
+    alturas = new Array(filasTabla.length).fill(ALTO_ESTIMADO);
+    recalcularAcum();
+    ventana = { a: -1, b: -1 };
+    renderVentana(true);
     $("planilla-pie").textContent = [
       lista.length > MAX_FILAS ? `Se muestran las primeras ${fmtNum(MAX_FILAS)} de ${fmtNum(lista.length)} filas: usá el buscador o los filtros.` :
         lista.length !== filas.length ? `Mostrando ${fmtNum(lista.length)} de ${fmtNum(filas.length)} filas.` : `${fmtNum(filas.length)} filas.`,
@@ -310,7 +389,7 @@
         autoScroll = setInterval(() => {
           const w = tabla.closest(".tabla-wrap"), r = w.getBoundingClientRect(), p = ultimoPunto;
           const dy = p.y < r.top + 50 ? -22 : p.y > r.bottom - 50 ? 22 : 0, dx = p.x < r.left + 50 ? -22 : p.x > r.right - 50 ? 22 : 0;
-          if (dy || dx) { w.scrollTop += dy; w.scrollLeft += dx; extenderRango(Math.max(r.left + 2, Math.min(p.x, r.right - 2)), Math.max(r.top + 2, Math.min(p.y, r.bottom - 2))); }
+          if (dy || dx) { w.scrollTop += dy; w.scrollLeft += dx; extenderRango(Math.max(r.left + 2, Math.min(p.x, r.right - 22)), Math.max(r.top + 70, Math.min(p.y, r.bottom - 22))); }
         }, 40);
       }
     });
@@ -579,7 +658,7 @@
       refrescarCeldas([f.codigo], Object.keys(d));
       if (seguir && siguiente) {
         const j = mostradas().findIndex(x => x.codigo === siguiente.codigo);
-        if (j >= 0) { celdaDesc(j).scrollIntoView({ block: "nearest" }); abrirPop(j); }
+        if (j >= 0) { asegurarFila(j); const td = celdaDesc(j); if (td) { td.scrollIntoView({ block: "nearest" }); abrirPop(j); } }
       } else if (seguir) toast("Descripción guardada. No hay más artículos en la lista.");
       else toast("Descripción guardada.");
     } catch (e) { toast(e.message, "error", 6000); }
@@ -598,6 +677,7 @@
       if (on && !document.fullscreenElement && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
       else if (!on && document.fullscreenElement) document.exitFullscreen().catch(() => {});
     } catch (e) { /* sin pantalla completa del navegador queda la del sitio */ }
+    setTimeout(() => renderVentana(true), 60);
   }
 
   // ---------- Columnas ----------
@@ -752,7 +832,12 @@
       if (popIndice != null && !e.target.closest("#pop-desc") && !e.target.closest("td.celda-desc")) cerrarPop();
     });
     document.addEventListener("scroll", () => { if (popIndice != null) ubicarPop(); }, true);
-    window.addEventListener("resize", () => { if (popIndice != null) ubicarPop(); });
+    window.addEventListener("resize", () => { if (popIndice != null) ubicarPop(); renderVentana(true); });
+    // Al desplazar se dibujan las filas que entran (una vez por cuadro, no por cada evento)
+    $("planilla-tabla").closest(".tabla-wrap").addEventListener("scroll", () => {
+      if (esperaDesplazar) return;
+      esperaDesplazar = requestAnimationFrame(() => { esperaDesplazar = 0; renderVentana(); });
+    }, { passive: true });
     window.addEventListener("hashchange", () => cerrarPop(true));
 
     const tabla = $("planilla-tabla");
@@ -782,5 +867,5 @@
     });
   }
 
-  R.vistaPlanilla = { iniciar, mostrar };
+  R.vistaPlanilla = { iniciar, mostrar, _renderVentana: renderVentana };
 })(window.COMPRAS);

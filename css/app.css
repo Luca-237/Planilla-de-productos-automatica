@@ -187,7 +187,7 @@ dialog .tabla-wrap { max-height:60vh; }
   box-shadow:inset -1px 0 0 var(--linea-fuerte); }
 .tabla.grilla.con-nombre tbody tr.clic:hover td:first-child { background:var(--hover); }
 .tabla.grilla.con-nombre thead th:first-child { left:0; z-index:3; box-shadow:inset 0 -1px 0 var(--linea-fuerte), inset -1px 0 0 var(--linea-fuerte); }
-.tabla td { padding:10px 10px; border-bottom:1px solid var(--linea); vertical-align:middle; transition:background-color var(--t-rapida) var(--ease); }
+.tabla td { padding:10px 10px; border-bottom:1px solid var(--linea); vertical-align:middle; }
 .tabla td small { display:block; color:var(--muted); font-size:12.5px; }
 .tabla tbody tr.clic { cursor:pointer; }
 .tabla tbody tr.clic:hover td { background:var(--hover); }
@@ -505,3 +505,8 @@ a.web-chip:hover { text-decoration:underline; }
 .cfg-propio { display:inline-flex; align-items:center; gap:10px; margin:0; padding:5px 14px 5px 6px; border-radius:var(--r-pill); background:var(--blanco); box-shadow:var(--sombra); font-size:14px; color:var(--texto); cursor:pointer; }
 .cfg-propio input[type=color] { width:30px; height:30px; padding:0; border:0; border-radius:50%; overflow:hidden; cursor:pointer; background:none; }
 .cfg-propio strong { margin-left:4px; font:600 12px/1 var(--display); letter-spacing:.04em; color:var(--muted); }
+
+/* Planilla: filas a pedido. Los espaciadores dan la altura de las filas que no están dibujadas */
+.tabla tr.esp td, .tabla.grilla tr.esp td { padding:0; border:0; box-shadow:none; background:none; }
+#planilla-tabla td { overflow-wrap:anywhere; }
+#planilla-tabla .tabla-wrap, .tabla-wrap { overscroll-behavior:contain; }

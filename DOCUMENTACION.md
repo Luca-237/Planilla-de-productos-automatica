@@ -130,6 +130,14 @@ Mientras llegan los datos se ve la **forma de lo que va a aparecer** (barras con
 - **Caché del navegador para los archivos** (`.htaccess`): los `.js` y `.css` se guardan 30 días (llevan `?v=` en `index.html`, así que al subir otra versión se bajan solos; **hay que subir el `?v=` en cada cambio**) y el `index.html` se revalida siempre.
 - Pruebas: `pruebas/cache.test.js` (lógica, sobre memoria).
 
+### Planilla: desplazamiento fluido (filas a pedido)
+Con las ~4.000 filas dibujadas había **más de 33.000 elementos** en pantalla y al desplazar rápido, vertical u horizontal, se cortaba. Ahora la tabla dibuja **solo las filas que se ven más unas de margen** (unas 20 a 30, ~1.000 elementos) y, arriba y abajo, dos filas vacías ("espaciadores") dan la altura del resto, así la barra de desplazamiento se comporta como si estuvieran todas (`renderVentana` en `js/vistas/planilla.js`).
+- **Columnas de ancho fijo** (`ANCHOS_COL`): con ancho automático las columnas se reacomodarían cada vez que entran filas nuevas; con ancho fijo el desplazamiento horizontal no cuesta nada.
+- **Se redibuja en tandas, no en cada fila**, y solo se agregan y sacan las filas que entran y salen (las demás no se tocan). Una fila dibujada se mide y la estimación de altura (74 px) se va corrigiendo.
+- **Todo lo demás sigue igual** porque trabaja con la lista de datos y no con lo dibujado: elegir filas, rango arrastrado (también cuando sale de lo dibujado), copiar, filtros, buscador, descripción rápida y catálogo. Ya no hay tope de 1.000 filas (`MAX_FILAS` pasó a 20.000).
+- La descripción rápida se cierra si se desplaza tanto que su fila sale de lo dibujado; al guardar y pasar a la siguiente se lleva la tabla hasta esa fila (`asegurarFila`).
+- **Medido con los datos reales (4.050 filas):** de 33.037 a ~1.000 elementos; 300 pasos de desplazamiento en las dos direcciones sin una sola vez que faltara una fila en pantalla; un redibujo cuesta 11–17 ms y ocurre cada varias filas.
+
 ### Fluidez de la planilla
 - Tildar casillas, elegir filas, guardar la descripción y revisar en la web **redibujan solo las celdas que cambian**, no la tabla entera (hasta 1000 filas). Cada celda lleva `data-c` con su columna; lo hace `refrescarCeldas(codigos, claves)` en `js/vistas/planilla.js`.
 - Si el filtro **Mostrar** depende del dato que cambió, ahí sí se redibuja todo (la fila puede tener que salir). Durante la revisión en la web no: las filas no saltan mientras llegan resultados, y se reacomodan al terminar.
