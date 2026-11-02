@@ -60,7 +60,8 @@
   }
 
   async function mostrar() {
-    $("pendientes-tabla").innerHTML = `<tbody><tr><td class="cargando">Cargando…</td></tr></tbody>`;
+    $("pendientes-kpis").innerHTML = R.util.esqueleto.kpis(4);
+    $("pendientes-tabla").innerHTML = R.util.esqueleto.tabla(7, 6);
     try {
       // Con datos guardados se muestra enseguida; si después llegan más nuevos, se vuelve a dibujar
       [filas, sobrantes] = await Promise.all([

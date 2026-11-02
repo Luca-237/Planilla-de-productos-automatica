@@ -29,6 +29,8 @@
   --verde:#2f6b3a; --verde-suave:#e6f2e8;
   --toast-fondo:#17211b; --toast-texto:#f3f8f4;
   --velo:rgba(15,35,22,.34);
+  --esq-a:#d4eadb; --esq-b:#ebf7ef;     /* esqueletos de carga */
+  --esq-fondo-a:#b4e3c6; --esq-fondo-b:#d3efdd; /* los que van sobre el fondo (menú, barra) */
   color-scheme:light;
   /* Forma */
   --r-sm:8px; --r:14px; --r-lg:18px; --r-pill:999px;
@@ -420,6 +422,7 @@ a.web-chip:hover { text-decoration:underline; }
   --alerta:#ff7d70; --alerta-suave:rgba(255,125,112,.13);
   --verde:#7fd694; --verde-suave:rgba(127,214,148,.14);
   --toast-fondo:#2a3a30; --toast-texto:#f3f8f4; --velo:rgba(0,0,0,.6);
+  --esq-a:#1f3027; --esq-b:#2a4034; --esq-fondo-a:#1a281f; --esq-fondo-b:#243529;
   --sombra:0 1px 1px rgba(0,0,0,.3), 0 2px 6px -2px rgba(0,0,0,.4);
   --sombra-alta:0 2px 4px rgba(0,0,0,.35), 0 18px 40px -16px rgba(0,0,0,.65);
   color-scheme:dark;
@@ -435,6 +438,7 @@ a.web-chip:hover { text-decoration:underline; }
   --alerta:#ff7d70; --alerta-suave:rgba(255,125,112,.13);
   --verde:#7fd694; --verde-suave:rgba(127,214,148,.14);
   --toast-fondo:#2a3a30; --toast-texto:#f3f8f4; --velo:rgba(0,0,0,.6);
+  --esq-a:#1f3027; --esq-b:#2a4034; --esq-fondo-a:#1a281f; --esq-fondo-b:#243529;
   --sombra:0 1px 1px rgba(0,0,0,.3), 0 2px 6px -2px rgba(0,0,0,.4);
   --sombra-alta:0 2px 4px rgba(0,0,0,.35), 0 18px 40px -16px rgba(0,0,0,.65);
   color-scheme:dark;
@@ -447,12 +451,23 @@ a.web-chip:hover { text-decoration:underline; }
   :root:not([data-tema="claro"]) .lateral a:hover { background:rgba(255,255,255,.06); }
 }
 
+/* ---------- Esqueletos de carga ---------- */
+.esq { display:block; max-width:100%; border-radius:6px; background:linear-gradient(90deg, var(--esq-a) 25%, var(--esq-b) 37%, var(--esq-a) 63%); background-size:400% 100%; animation:brillo 1.5s ease-in-out infinite; }
+.lateral .esq, .barra .esq, .vista-head .esq { background-image:linear-gradient(90deg, var(--esq-fondo-a) 25%, var(--esq-fondo-b) 37%, var(--esq-fondo-a) 63%); }
+.esq-fila td { padding-top:16px; padding-bottom:16px; }
+.kpi[aria-hidden="true"] { min-height:112px; }
+.esq-app { pointer-events:none; }
+.esq-app .lateral a { gap:12px; }
+.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
+.kpis [aria-hidden="true"], tr[aria-hidden="true"] { pointer-events:none; }
+
 /* ---------- Animaciones ---------- */
 @keyframes aparecer { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
 @keyframes subir { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
 @keyframes dialogo { from { opacity:0; transform:translateY(8px) scale(.985); } to { opacity:1; transform:none; } }
 @keyframes fundido { from { opacity:0; } to { opacity:1; } }
 @keyframes toast { from { opacity:0; transform:translate(-50%, 8px); } to { opacity:1; transform:translate(-50%, 0); } }
+@keyframes brillo { from { background-position:100% 50%; } to { background-position:0 50%; } }
 @keyframes latido { 0%, 100% { opacity:1; } 50% { opacity:.45; } }
 /* Si la persona pidió menos movimiento en su sistema, se respeta */
 @media (prefers-reduced-motion: reduce) {

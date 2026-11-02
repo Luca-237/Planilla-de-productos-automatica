@@ -156,8 +156,29 @@ window.COMPRAS = window.COMPRAS || {};
   const etiquetaProveedor = (nombre, razonSocial) => nombre
     ? `<span class="prov"${razonSocial && razonSocial !== nombre ? ` title="${esc(razonSocial)}"` : ""}>${esc(nombre)}</span>` : "";
 
+  // ---------- Esqueletos de carga ----------
+  // Mientras llegan los datos se muestra la forma de lo que va a aparecer (barras con un brillo
+  // suave) en vez de "Cargando…". Los anchos varían para que no se vea plano.
+  const ANCHOS = [72, 48, 86, 60, 40, 78, 54, 66, 90, 45];
+  const barra = (ancho, alto = 12, extra = "") => `<span class="esq" style="width:${ancho}${typeof ancho === "number" ? "%" : ""}; height:${alto}px${extra}"></span>`;
+  const aviso = `<span class="sr-only">Cargando…</span>`;
+  const esqueleto = {
+    kpis(n = 4) {
+      return aviso + Array.from({ length: n }, (_, i) => `<div class="kpi" aria-hidden="true">${barra(55 + (i % 3) * 10, 10)}${barra(38, 28, "; margin-top:12px")}${barra(70 - (i % 2) * 15, 10, "; margin-top:10px")}</div>`).join("");
+    },
+    // Solo filas (para un <tbody> que ya tiene encabezado)
+    filas(cols, n = 6) {
+      return Array.from({ length: n }, (_, f) => `<tr class="esq-fila" aria-hidden="true">${Array.from({ length: cols }, (_, c) =>
+        `<td>${c === 0 ? barra(ANCHOS[f % 10], 12) + barra(40, 9, "; margin-top:6px") : barra(ANCHOS[(f + c) % 10] - 10, 12)}</td>`).join("")}</tr>`).join("");
+    },
+    // Tabla completa: encabezado + filas
+    tabla(cols, n = 6) {
+      return aviso + `<thead><tr>${Array.from({ length: cols }, (_, c) => `<th>${barra(c === 0 ? 50 : 70, 9)}</th>`).join("")}</tr></thead><tbody>${esqueleto.filas(cols, n)}</tbody>`;
+    },
+  };
+
   R.util = {
-    $, esc, norm, aEmail, aUsuario, hoy, fmtFecha, fmtNum, fmtPesos, fechaHora, plural, toast, descargarCSV,
+    esqueleto, $, esc, norm, aEmail, aUsuario, hoy, fmtFecha, fmtNum, fmtPesos, fechaHora, plural, toast, descargarCSV,
     iniciarDialogos, info, iniciarAyudas, iniciarTema, ICONOS, ESTADOS, chipEstado, nombreProveedor, etiquetaProveedor,
   };
 })(window.COMPRAS);

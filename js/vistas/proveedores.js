@@ -60,7 +60,7 @@
   }
 
   async function mostrar() {
-    $("proveedores-tabla").innerHTML = `<tbody><tr><td class="cargando">Cargando…</td></tr></tbody>`;
+    $("proveedores-tabla").innerHTML = R.util.esqueleto.tabla(5, 6);
     try {
       [proveedores, ordenes, pendientes] = await Promise.all([R.api.proveedores.listar(), R.api.ordenes.listar(), R.api.vistas.pendientes()]);
     } catch (e) {

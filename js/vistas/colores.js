@@ -21,7 +21,7 @@
   }
 
   async function mostrar() {
-    $("colores-tabla").innerHTML = `<tbody><tr><td class="cargando">Cargando…</td></tr></tbody>`;
+    $("colores-tabla").innerHTML = R.util.esqueleto.tabla(5, 6);
     try { colores = await R.api.colores.listar(); pintar(); }
     catch (e) { $("colores-tabla").innerHTML = `<tbody><tr><td>${esc(e.message)}</td></tr></tbody>`; }
   }

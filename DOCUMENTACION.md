@@ -97,6 +97,9 @@ Botón **Armar catálogo** (barra de la Planilla y barras de selección; **solo 
 - **Publicar la función:** `buscar-en-web` cambió (precio e imágenes): hay que volver a pegar `supabase/functions/buscar-en-web/index.ts` en Supabase → Edge Functions → buscar-en-web → Code → Deploy updates (Verify JWT sigue apagado).
 - Pruebas: `pruebas/catalogo.test.js` (formato, hojas, PDF y PowerPoint) y `pruebas/web.test.mjs` (lectura del precio y de la foto).
 
+### Esqueletos de carga (en vez de "Cargando…")
+Mientras llegan los datos se ve la **forma de lo que va a aparecer** (barras con un brillo suave), como en el Gestor de RRHH. Al arrancar, `index.html` trae un esqueleto de toda la app (barra, menú, indicadores y tabla) que se ve **antes** de que cargue el JavaScript; después, cada pantalla (Pendientes, Planilla, Órdenes y remitos, Proveedores, Colores, Usuarios) muestra el esqueleto de sus indicadores y tablas hasta tener los datos. Las ayudas están en `R.util.esqueleto` (`kpis`, `filas`, `tabla`) y los colores en los tokens `--esq-*`. Con datos en la caché (ver abajo) la pantalla sale directo y no se ve el esqueleto.
+
 ### Caché en el navegador (para no consultar lo mismo a cada rato)
 `js/cache.js`, usado solo desde `js/api.js` (las pantallas no saben que existe, salvo que pasan `alActualizar`). Estrategia **stale-while-revalidate**:
 - **Dónde se guarda:** memoria (la pestaña), **localStorage** para lo chico (proveedores, colores, preferencias de columnas) e **IndexedDB** para lo grande (planilla, pendientes, órdenes, remitos…): localStorage tiene ~5 MB y la planilla con miles de filas no entra. Si el navegador no deja guardar (ventana privada, sin espacio), sigue solo con la memoria.

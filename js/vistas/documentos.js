@@ -50,7 +50,8 @@
   }
 
   async function mostrar() {
-    $("ordenes-tabla").innerHTML = `<tbody><tr><td class="cargando">Cargando…</td></tr></tbody>`;
+    $("ordenes-tabla").innerHTML = R.util.esqueleto.tabla(6, 6);
+    $("remitos-tabla").innerHTML = R.util.esqueleto.tabla(5, 4);
     try {
       [ordenes, lineas, remitos] = await Promise.all([R.api.ordenes.listar(), R.api.vistas.lineas(), R.api.remitos.listar()]);
     } catch (e) {

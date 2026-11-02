@@ -163,7 +163,7 @@
   }
 
   async function mostrar() {
-    $("planilla-tabla").innerHTML = `<tbody><tr><td class="cargando">Cargando…</td></tr></tbody>`;
+    $("planilla-tabla").innerHTML = R.util.esqueleto.tabla(9, 9);
     try {
       const [datos, pref] = await Promise.all([R.api.vistas.planilla({ alActualizar: actualizadas }), R.api.preferencias.obtener()]);
       filas = datos;

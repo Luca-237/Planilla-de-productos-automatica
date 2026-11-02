@@ -26,7 +26,7 @@
   }
 
   async function cargar() {
-    $("tabla-usuarios").innerHTML = `<tr><td colspan="4" class="cargando">Cargando usuarios…</td></tr>`;
+    $("tabla-usuarios").innerHTML = R.util.esqueleto.filas(4, 3);
     try { usuarios = await R.api.usuarios.listar(); pintar(); }
     catch (e) { $("tabla-usuarios").innerHTML = `<tr><td colspan="4">${esc(e.message)}</td></tr>`; }
   }
