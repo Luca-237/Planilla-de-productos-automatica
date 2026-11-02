@@ -14,6 +14,7 @@
     colores: () => R.vistaColores,
     usuarios: () => R.vistaUsuarios,
     importar: () => R.vistaImportar,
+    configuracion: () => R.vistaConfiguracion,
   };
   let vistaActual = null;
 

@@ -97,6 +97,13 @@ Botón **Armar catálogo** (barra de la Planilla y barras de selección; **solo 
 - **Publicar la función:** `buscar-en-web` cambió (precio e imágenes): hay que volver a pegar `supabase/functions/buscar-en-web/index.ts` en Supabase → Edge Functions → buscar-en-web → Code → Deploy updates (Verify JWT sigue apagado).
 - Pruebas: `pruebas/catalogo.test.js` (formato, hojas, PDF y PowerPoint) y `pruebas/web.test.mjs` (lectura del precio y de la foto).
 
+### Configuración: elegir el color de fondo
+Sección **Configuración** del menú (la ven todos los usuarios). En **Apariencia** se elige el color de fondo entre 8 sugeridos (verde pastel de siempre, menta, celeste, lila, rosa, durazno, amarillo, gris) o con el selector de **Otro color**; se ve en vivo y **Volver al verde pastel** deja el de siempre.
+- **Es personal:** se guarda en el navegador (`localStorage`, clave `compras-color`) y no cambia lo que ven los demás. En otra PC o navegador hay que elegirlo de nuevo.
+- **Todo se calcula de un solo color** (`js/color.js`): desde el matiz y la intensidad se derivan los bordes, los encabezados de tabla, las filas bajo el mouse, los esqueletos de carga, los textos y el **modo oscuro** (en el mismo matiz). Para que siempre se lea bien, la luminosidad se limita a un pastel (78 %–93 % en claro) y se avisa si se ajustó. El naranja de la marca y los verdes de estados y selección no cambian.
+- Se aplica con una hoja de estilos (`#color-usuario`) que va después de `css/app.css` y **antes de dibujar**, así no parpadea al cargar. Si es el verde de siempre, no se agrega nada.
+- Pruebas: `pruebas/color.test.js`.
+
 ### Esqueletos de carga (en vez de "Cargando…")
 Mientras llegan los datos se ve la **forma de lo que va a aparecer** (barras con un brillo suave), como en el Gestor de RRHH. Al arrancar, `index.html` trae un esqueleto de toda la app (barra, menú, indicadores y tabla) que se ve **antes** de que cargue el JavaScript; después, cada pantalla (Pendientes, Planilla, Órdenes y remitos, Proveedores, Colores, Usuarios) muestra el esqueleto de sus indicadores y tablas hasta tener los datos. Las ayudas están en `R.util.esqueleto` (`kpis`, `filas`, `tabla`) y los colores en los tokens `--esq-*`. Con datos en la caché (ver abajo) la pantalla sale directo y no se ve el esqueleto.
 

@@ -495,3 +495,13 @@ a.web-chip:hover { text-decoration:underline; }
   .kpi .valor { font-size:26px; }
   .caja { padding:16px; }
 }
+
+/* ---------- Configuración: elegir el color ---------- */
+.cfg-fila { display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin-top:4px; }
+.cfg-sugeridos { display:flex; gap:10px; flex-wrap:wrap; }
+.cfg-color { width:36px; height:36px; padding:0; border:0; border-radius:50%; background:var(--c); cursor:pointer; box-shadow:inset 0 0 0 1px rgba(0,0,0,.12), var(--sombra); transition:transform var(--t-rapida) var(--ease), box-shadow var(--t-rapida) var(--ease); }
+.cfg-color:hover { transform:scale(1.08); }
+.cfg-color[aria-pressed="true"] { box-shadow:inset 0 0 0 1px rgba(0,0,0,.12), 0 0 0 3px var(--blanco), 0 0 0 5px var(--negro); }
+.cfg-propio { display:inline-flex; align-items:center; gap:10px; margin:0; padding:5px 14px 5px 6px; border-radius:var(--r-pill); background:var(--blanco); box-shadow:var(--sombra); font-size:14px; color:var(--texto); cursor:pointer; }
+.cfg-propio input[type=color] { width:30px; height:30px; padding:0; border:0; border-radius:50%; overflow:hidden; cursor:pointer; background:none; }
+.cfg-propio strong { margin-left:4px; font:600 12px/1 var(--display); letter-spacing:.04em; color:var(--muted); }
