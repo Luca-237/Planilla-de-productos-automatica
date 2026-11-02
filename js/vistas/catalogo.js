@@ -20,6 +20,8 @@
   // estado: "" (sin comprobar) | "publicado" | "solo_variantes" | "no_esta" | "error"
   let items = [];          // [{ codigo, nombre, precio, precioWeb, url, foto, fotoAncho, fotoAlto, fotoFormato, estado }]
   let busqueda = null;     // AbortController de la comprobación en curso
+  let urlVista = null;     // vista previa (PDF en memoria)
+  let esperaVista = 0;
   const cfgWeb = () => Object.assign({ lote: 10, esperaSegundos: 5 }, (window.COMPRAS_CONFIG || {}).revisionWeb);
   const enPagina = it => it.estado === "publicado" || it.estado === "solo_variantes";
 
@@ -162,6 +164,51 @@
     $("cat-comprobar").hidden = false;
     $("cat-comprobar-texto").textContent = busqueda ? "Detener" : (sin ? "Comprobar en la página" : "Volver a comprobar");
     $("cat-aviso").hidden = !(dentro.length === 0 && !busqueda && items.length && !sin);
+    pintarProblemas();
+    programarVista();
+  }
+
+  // ---------- Qué podría salir mal (se avisa antes de descargar) ----------
+  const NOMBRE_LARGO = 56; // más que esto ocupa tres renglones y pisa la foto
+  function problemas() {
+    const dentro = items.filter(enPagina), conPrecio = $("cat-precio").checked, lista = [];
+    const con = (cond, texto) => { const c = dentro.filter(cond).map(i => i.codigo); if (c.length) lista.push(`${texto}: ${c.join(", ")}`); };
+    con(i => !i.foto, "Sin foto (sale el recuadro vacío)");
+    if (conPrecio) con(i => i.precio == null, "Sin precio (la tarjeta sale sin la píldora negra)");
+    con(i => !String(i.nombre).trim(), "Sin nombre");
+    con(i => String(i.nombre).length > NOMBRE_LARGO, "Nombre muy largo (se corta o pisa la foto)");
+    return lista;
+  }
+  function pintarProblemas() {
+    const p = items.some(enPagina) && !busqueda ? problemas() : [];
+    $("cat-problemas").hidden = !p.length;
+    $("cat-problemas").innerHTML = p.map(x => `<li>${esc(x)}</li>`).join("");
+  }
+
+  // ---------- Vista previa: el mismo PDF que se descarga ----------
+  function programarVista() {
+    clearTimeout(esperaVista);
+    esperaVista = setTimeout(actualizarVista, 600);
+  }
+  function soltarVista() {
+    if (urlVista) URL.revokeObjectURL(urlVista);
+    urlVista = null;
+    $("cat-frame").removeAttribute("src");
+  }
+  async function actualizarVista() {
+    const dentro = items.filter(enPagina), caja = $("cat-vista");
+    if (!$("dlg-catalogo").open || !dentro.length) { caja.hidden = true; return; }
+    if (busqueda) return; // se actualiza al terminar de comprobar
+    try {
+      await cargarLib("pdf");
+      const blob = window.CatalogoFormato.crearPDF(window.jspdf.jsPDF, dentro, opciones()).output("blob");
+      const anterior = urlVista;
+      urlVista = URL.createObjectURL(blob);
+      $("cat-frame").src = urlVista + "#toolbar=0&navpanes=0&view=FitH";
+      $("cat-abrir-vista").href = urlVista;
+      caja.hidden = false;
+      if (anterior) setTimeout(() => URL.revokeObjectURL(anterior), 2000);
+    } catch (e) { $("cat-vista").hidden = true; }
   }
 
   // ---------- Descargas ----------
@@ -174,6 +221,8 @@
   async function descargar(tipo) {
     const boton = $(tipo === "pdf" ? "cat-pdf" : "cat-pptx"), dentro = items.filter(enPagina);
     if (!dentro.length) return;
+    const p = problemas();
+    if (p.length && !confirm(`Antes de descargar, ojo:\n\n- ${p.join("\n- ")}\n\nRevisá la vista previa. ¿Descargar igual?`)) return;
     boton.disabled = true;
     try {
       await cargarLib(tipo);
@@ -201,6 +250,8 @@
     $("cat-iva").checked = p.mostrarIva !== false;
     $("cat-titulo").value = $("cat-titulo").value || "Catálogo de ingresos";
     $("cat-progreso").hidden = true;
+    $("cat-vista").hidden = true;
+    soltarVista();
     pintarLista();
     $("dlg-catalogo").showModal();
     // Las librerías se bajan de fondo; la comprobación en la página empieza sola
@@ -214,11 +265,11 @@
       if (!busqueda && !items.some(i => !i.estado || i.estado === "error")) items.forEach(i => { i.estado = ""; });
       comprobar();
     });
-    $("cat-precio").addEventListener("change", guardarPref);
-    $("cat-iva").addEventListener("change", guardarPref);
+    $("cat-precio").addEventListener("change", () => { guardarPref(); pintarProblemas(); programarVista(); });
+    $("cat-iva").addEventListener("change", () => { guardarPref(); programarVista(); });
     $("cat-pdf").addEventListener("click", () => descargar("pdf"));
     $("cat-pptx").addEventListener("click", () => descargar("pptx"));
-    $("dlg-catalogo").addEventListener("close", () => { if (busqueda) busqueda.abort(); });
+    $("dlg-catalogo").addEventListener("close", () => { if (busqueda) busqueda.abort(); clearTimeout(esperaVista); soltarVista(); });
     const tabla = $("cat-tabla");
     tabla.addEventListener("input", e => {
       const tr = e.target.closest("tr[data-i]");
@@ -226,6 +277,8 @@
       const it = items[Number(tr.dataset.i)];
       if (e.target.dataset.campo === "precio") it.precio = e.target.value === "" ? null : Number(e.target.value);
       else it.nombre = e.target.value;
+      pintarProblemas();
+      programarVista();
     });
     tabla.addEventListener("change", async e => {
       const i = e.target.dataset.subir;
