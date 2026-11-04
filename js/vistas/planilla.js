@@ -66,7 +66,6 @@
     ["cantidad", "Cantidad", "Compra", f => f.es_variante ? "" : fmtNum(f.cantidad), "num"],
     ["precio_unitario", "Precio unit.", "Compra", f => f.es_variante ? "" : fmtPesos(f.precio_unitario), "num"],
     ["estado", "Estado", "Compra", f => chipEstado(f.estado)],
-    ["recibido", "Unidades llegadas", "Compra", f => f.es_variante ? "" : fmtNum(f.recibido), "num"],
     ["pendiente", "Falta", "Compra", f => f.es_variante ? "" : fmtNum(f.pendiente), "num"],
     ["dias_desde_orden", "Días", "Compra", f => fmtNum(f.dias_desde_orden), "num"],
     ["ultima_recepcion", "Última llegada", "Compra", f => fmtFecha(f.ultima_recepcion)],
