@@ -6,7 +6,7 @@
 (function (R) {
   // Datos web del artículo que se pueden editar desde la planilla
   const CAMPOS_ARTICULO = ["tipo", "padre_codigo", "cod_barra", "foto", "descripcion_ok", "cargado_web", "catalogo",
-    "fecha_alta_web", "sin_stock", "observaciones", "titulo_web", "descripcion_web", "estado_descripcion", "ya_no_esta"];
+    "llego", "fecha_alta_web", "sin_stock", "observaciones", "titulo_web", "descripcion_web", "estado_descripcion", "ya_no_esta"];
   let sb = null;
 
   function configurado() {

@@ -93,6 +93,7 @@
           if (resto <= 0 || pendiente <= 0) return;
           const toma = Math.min(resto, pendiente);
           recepciones.push({ id: nuevoId(), remito_linea_id: rl.id, oc_linea_id: x.id, cantidad: toma });
+          articulos.get(x.codigo).llego = true; // como el trigger de la base: entra mercadería, queda marcado
           asignado.push({ orden: o.numero, cantidad: toma });
           tocadas.add(o.id);
           resto -= toma;
@@ -189,7 +190,7 @@
         if (cantidad > sin) throw new Error(`De esa línea del remito solo quedan ${sin} unidades sin orden`);
         if (cantidad > v.pendiente) throw new Error(`La línea de OC recibiría más de lo pendiente (${v.pendiente})`);
         const ya = recepciones.find(r => r.remito_linea_id === remitoLineaId && r.oc_linea_id === ocLineaId);
-        if (ya) ya.cantidad += cantidad; else recepciones.push({ id: nuevoId(), remito_linea_id: remitoLineaId, oc_linea_id: ocLineaId, cantidad });
+        if (ya) ya.cantidad += cantidad; else { recepciones.push({ id: nuevoId(), remito_linea_id: remitoLineaId, oc_linea_id: ocLineaId, cantidad }); const lx = lineas.find(l => l.id === ocLineaId); if (lx) articulos.get(lx.codigo).llego = true; }
         return { orden: v.orden, cantidad };
       },
       quitar: async (remitoLineaId, ocLineaId, cantidad) => {
@@ -206,9 +207,11 @@
       // Cada artículo seguido de sus variantes (que no traen cantidades), como v_planilla
       planilla: () => espera(vLineas().flatMap(v => {
         const a = articulos.get(v.codigo), c = colorDe(a);
-        const fila = { ...a, ...v, nombre: a.descripcion || v.descripcion, oc_linea_id: v.id, padre: a.padre_codigo || a.codigo,
+        // "Llegó": casilla del artículo; las variantes muestran la del padre (como v_planilla)
+        const llego = a.llego !== undefined ? !!a.llego : lineas.some(l => l.codigo === a.codigo && recibido(l) > 0);
+        const fila = { ...a, ...v, llego, nombre: a.descripcion || v.descripcion, oc_linea_id: v.id, padre: a.padre_codigo || a.codigo,
           es_variante: a.tipo === "VARIANTE", n_variantes: hijos(a.codigo).length, color: c.nombre || null, color_codigo: c.codigo || null };
-        const hijas = hijos(a.codigo).map(x => ({ ...x, orden: v.orden, fecha_orden: v.fecha_orden, proveedor: v.proveedor, razon_social: v.razon_social,
+        const hijas = hijos(a.codigo).map(x => ({ ...x, llego, orden: v.orden, fecha_orden: v.fecha_orden, proveedor: v.proveedor, razon_social: v.razon_social,
           estado: v.estado, ultima_recepcion: v.ultima_recepcion, dias_desde_orden: v.dias_desde_orden, dias_atraso: v.dias_atraso,
           cantidad: null, precio_unitario: null, recibido: null, pendiente: null, oc_linea_id: v.id, orden_id: v.orden_id,
           nombre: x.descripcion, padre: a.codigo, es_variante: true, n_variantes: 0, color: colorDe(x).nombre, color_codigo: colorDe(x).codigo }));

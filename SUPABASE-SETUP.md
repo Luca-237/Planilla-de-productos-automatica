@@ -28,6 +28,8 @@ Proyecto **nuevo y separado** de rótulos y de RRHH: las cuentas y los datos de 
 6. `20261029200000_permisos_clave_servicio.sql` (permisos de la clave de servicio: sin esto las funciones responden 403)
 7. `20261029220000_importar_planilla.sql` (carga masiva de la planilla anterior; proveedores sin CUIT provisorio)
 8. `20261102100000_sincronizar_planilla.sql` (actualizar lo importado con una planilla más nueva)
+9. `20261102200000_asignaciones_deshacer.sql` (elegir a qué orden va un remito, asignar a mano lo que llegó sin orden, deshacer cargas)
+10. `20261103100000_llego_casilla.sql` ("Llegó" como casilla del artículo: se marca sola al entrar mercadería, se puede tildar a mano y nunca se desmarca sola)
 
 Pegar el contenido **completo** → **Run**. Supabase avisa "Potential issue detected… destructive operations": es por los `drop … if exists` y `revoke`, que hacen que el script se pueda volver a correr. Confirmar con **Run query**. Tiene que decir **Success. No rows returned**.
 

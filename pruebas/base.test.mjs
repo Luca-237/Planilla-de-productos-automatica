@@ -237,6 +237,25 @@ test('casillas en varios artículos juntos: carga las cambia y la base devuelve 
   assert.deepEqual(await como(U.consulta, "select distinct foto from public.v_planilla where orden = '0001-00000040'"), [{ foto: true }]);
 });
 
+test('"Llegó": se marca solo al entrar mercadería, se puede tildar a mano y nunca se desmarca solo', async () => {
+  await cargarOC(oc('0001-00000077', '2026-10-01', [['LL1', 5], ['LL2', 5]]));
+  const llego = () => como(U.consulta, "select codigo, llego from public.v_planilla where orden = '0001-00000077' order by codigo");
+  assert.deepEqual(await llego(), [{ codigo: 'LL1', llego: false }, { codigo: 'LL2', llego: false }]);
+
+  await cargarRemito(remito('0009-00000077', '2026-10-05', [['LL1', 2]]));
+  assert.deepEqual(await llego(), [{ codigo: 'LL1', llego: true }, { codigo: 'LL2', llego: false }]);
+
+  // A mano: carga tilda y destilda; consulta no cambia nada
+  assert.equal((await como(U.consulta, "update public.articulos set llego = true where codigo = 'LL2' returning codigo")).length, 0);
+  assert.equal((await como(U.carga, "update public.articulos set llego = true where codigo = 'LL2' returning codigo")).length, 1);
+  assert.equal((await como(U.carga, "update public.articulos set llego = false where codigo = 'LL2' returning codigo")).length, 1);
+
+  // Que el artículo se publique, se marque "ya no está" o se revise en la web no toca "Llegó"
+  await como(U.carga, "update public.articulos set cargado_web = true where codigo = 'LL1'");
+  await como(U.carga, "update public.articulos set ya_no_esta = true where codigo = 'LL1'");
+  assert.deepEqual(await llego(), [{ codigo: 'LL1', llego: true }, { codigo: 'LL2', llego: false }]);
+});
+
 test('variantes por color: se crean con el sufijo, salen debajo del padre y no se repiten', async () => {
   await cargarOC(oc('0001-00000050', '2026-10-01', [['V100', 10], ['V200', 4]]));
   const ids = cods => `array(select id from public.colores where codigo in (${cods.map(c => "'" + c + "'").join(",")}))`;

@@ -526,3 +526,12 @@ a.web-chip:hover { text-decoration:underline; }
 .asig-remito input[type=text], .asig-remito input:not([type]) { width:230px; padding:6px 9px; }
 #asignar-tabla input { width:80px; padding:5px 8px; }
 .tag-mismo { display:inline-block; margin-left:6px; padding:1px 8px; border-radius:var(--r-pill); background:var(--verde-suave); color:var(--verde); font:600 11px/1.5 var(--display); }
+
+/* Planilla: encabezados que se ordenan (fechas) y se arrastran (mover columnas) */
+#planilla-tabla th[draggable="true"] { cursor:grab; }
+#planilla-tabla th.th-orden { cursor:pointer; }
+#planilla-tabla th .th-txt { display:inline-flex; align-items:center; gap:4px; }
+#planilla-tabla th .orden-ico { width:14px; height:14px; flex:none; color:var(--verde); }
+#planilla-tabla th .orden-ico.sin { color:var(--muted); opacity:.5; }
+#planilla-tabla th.arrastrando { opacity:.45; }
+#planilla-tabla th.soltar-aca { box-shadow:inset 3px 0 0 var(--verde); background:var(--hover); }

@@ -13,8 +13,10 @@
 
   // Casillas que se tildan desde la tabla. Los datos web son del artículo:
   // tildar en una fila tilda todas las filas del mismo código.
+  // "Llegó" queda marcado solo cuando entra mercadería y no se desmarca nunca solo: si el artículo estuvo
+  // en la web y después deja de estar, sigue marcado y así se nota que lo tuvimos y nos quedamos sin stock.
   const TILDES = {
-    foto: "Foto", descripcion_ok: "Descripción OK", sin_stock: "Sin stock",
+    llego: "Llegó", foto: "Foto", descripcion_ok: "Descripción OK", sin_stock: "Sin stock",
     cargado_web: "Cargado web", catalogo: "Catálogo", ya_no_esta: "Ya no está en la página",
   };
   const editable = () => app().puedeCargar();
@@ -55,7 +57,8 @@
     // Descripción y casillas al lado del nombre, para no tener que desplazarse
     ["web_estado", "En la web", "Casillas", chipWeb],
     ["descripcion_web", "Descripción web", "Casillas", vistaDesc, "celda-desc"],
-    ...Object.keys(TILDES).map(k => [k, TILDES[k], "Casillas", casilla(k), "num celda-tilde"]),
+    // Las variantes (colores) no llevan casilla propia: es del artículo padre
+    ...Object.keys(TILDES).map(k => [k, TILDES[k], "Casillas", k === "llego" ? (f => f.es_variante ? "" : casilla(k)(f)) : casilla(k), "num celda-tilde"]),
     ["orden", "Orden de compra", "Compra"],
     ["fecha_orden", "Fecha OC", "Compra", f => fmtFecha(f.fecha_orden)],
     ["proveedor", "Proveedor", "Compra"],
@@ -63,7 +66,7 @@
     ["cantidad", "Cantidad", "Compra", f => f.es_variante ? "" : fmtNum(f.cantidad), "num"],
     ["precio_unitario", "Precio unit.", "Compra", f => f.es_variante ? "" : fmtPesos(f.precio_unitario), "num"],
     ["estado", "Estado", "Compra", f => chipEstado(f.estado)],
-    ["recibido", "Llegó", "Compra", f => f.es_variante ? "" : fmtNum(f.recibido), "num"],
+    ["recibido", "Unidades llegadas", "Compra", f => f.es_variante ? "" : fmtNum(f.recibido), "num"],
     ["pendiente", "Falta", "Compra", f => f.es_variante ? "" : fmtNum(f.pendiente), "num"],
     ["dias_desde_orden", "Días", "Compra", f => fmtNum(f.dias_desde_orden), "num"],
     ["ultima_recepcion", "Última llegada", "Compra", f => fmtFecha(f.ultima_recepcion)],
@@ -87,7 +90,54 @@
   const seleccion = new Set(); // códigos elegidos para marcar varios juntos
   let ultimoClic = null;       // índice de la última fila tildada en la selección (para Shift + clic)
 
-  const visibles = () => COLUMNAS.filter(c => SIEMPRE.includes(c.clave) || !ocultas.has(c.clave));
+  // Orden de las columnas y orden de las filas: cada persona lo arma a su gusto y queda en este navegador
+  const CLAVE_VISTA = "compras.planilla.vista";
+  const ORDENABLES = ["fecha_alta_web", "fecha_orden", "ultima_recepcion"]; // clic en el encabezado: más recientes / más antiguas
+  let ordenCols = [];                    // claves en el orden elegido (las que falten van al final, como vienen)
+  let ordenFilas = null;                 // { clave, dir: "desc" | "asc" } o null
+  try {
+    const g = JSON.parse(localStorage.getItem(CLAVE_VISTA) || "null") || {};
+    if (Array.isArray(g.columnas)) ordenCols = g.columnas.filter(k => COLUMNAS.some(c => c.clave === k));
+    if (g.filas && ORDENABLES.includes(g.filas.clave) && ["asc", "desc"].includes(g.filas.dir)) ordenFilas = g.filas;
+  } catch (e) { /* sin lo guardado queda el orden de siempre */ }
+  const guardarVista = () => { try { localStorage.setItem(CLAVE_VISTA, JSON.stringify({ columnas: ordenCols, filas: ordenFilas })); } catch (e) { /* no pasa nada */ } };
+
+  const posicion = c => { const i = ordenCols.indexOf(c.clave); return i < 0 ? 1e6 + COLUMNAS.indexOf(c) : i; };
+  const columnasEnOrden = () => [...COLUMNAS].sort((a, b) => posicion(a) - posicion(b));
+  const visibles = () => columnasEnOrden().filter(c => SIEMPRE.includes(c.clave) || !ocultas.has(c.clave));
+
+  // Mueve una columna a la posición de otra (entre todas, también las ocultas)
+  function moverColumna(desde, hasta) {
+    if (desde === hasta) return;
+    const claves = columnasEnOrden().map(c => c.clave), i = claves.indexOf(desde), j = claves.indexOf(hasta);
+    if (i < 0 || j < 0) return;
+    claves.splice(i, 1); claves.splice(j, 0, desde);
+    ordenCols = claves; guardarVista(); pintar();
+  }
+
+  // Encabezado de fecha: 1.º clic más recientes, 2.º más antiguas, 3.º vuelve al orden de siempre
+  function ordenarPor(clave) {
+    ordenFilas = !ordenFilas || ordenFilas.clave !== clave ? { clave, dir: "desc" } : ordenFilas.dir === "desc" ? { clave, dir: "asc" } : null;
+    guardarVista(); pintar();
+  }
+  const aplicarOrden = lista => {
+    if (!ordenFilas) return lista;
+    const { clave, dir } = ordenFilas, k = dir === "desc" ? -1 : 1;
+    // Las filas sin fecha van siempre al final
+    return [...lista].sort((a, b) => {
+      const x = a[clave] || "", y = b[clave] || "";
+      if (!x || !y) return x === y ? 0 : x ? -1 : 1;
+      return x < y ? -k : x > y ? k : 0;
+    });
+  };
+  const ICO_ORDEN = {
+    desc: `<path d="m6 9 6 6 6-6"/>`, asc: `<path d="m18 15-6-6-6 6"/>`, sin: `<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/>`,
+  };
+  const flechaOrden = clave => {
+    const e = ordenFilas && ordenFilas.clave === clave ? ordenFilas.dir : "sin";
+    return `<svg class="orden-ico ${e === "sin" ? "sin" : ""}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICO_ORDEN[e]}</svg>`;
+  };
+  const titulosOrden = clave => !ordenFilas || ordenFilas.clave !== clave ? "Tocá para ordenar: más recientes primero" : ordenFilas.dir === "desc" ? "Más recientes primero · tocá para ver las más antiguas" : "Más antiguas primero · tocá para quitar el orden";
   const mostradas = () => $("planilla-tabla")._filas || [];
 
   function filtradas() {
@@ -97,7 +147,7 @@
     const pasa = f => {
       if (!falta) return true;
       // Como el filtro "SUBIR PAGINA" de la planilla anterior: mercadería que llegó, todavía no cargada en la web y con stock
-      if (falta === "subir_web") return f.estado === "completa" && !f.cargado_web && !f.sin_stock;
+      if (falta === "subir_web") return f.llego && !f.cargado_web && !f.sin_stock;
       if (falta === "web_sin") return !f.web_estado;
       if (falta === "web_si") return ["publicado", "solo_variantes"].includes(f.web_estado);
       if (falta === "web_no") return f.web_estado === "no_esta";
@@ -106,8 +156,8 @@
     const lista = filas.filter(f => (!prov || f.proveedor === prov) && (!est || f.estado === est) && pasa(f)
       && (!q || norm(`${f.codigo} ${f.nombre} ${f.orden} ${f.proveedor} ${f.razon_social || ""}`).includes(q)));
     // "Subir a la página" es una lista de trabajo: cada artículo una sola vez, aunque esté en varias órdenes (queda la más nueva)
-    if (falta === "subir_web") { const vistos = new Set(); return lista.filter(f => !vistos.has(f.codigo) && vistos.add(f.codigo)); }
-    return lista;
+    if (falta === "subir_web") { const vistos = new Set(); return aplicarOrden(lista.filter(f => !vistos.has(f.codigo) && vistos.add(f.codigo))); }
+    return aplicarOrden(lista);
   }
 
   // ---------- Filas a pedido (la tabla tiene miles de filas: solo se dibujan las que se ven) ----------
@@ -194,7 +244,9 @@
     tabla.style.tableLayout = "fixed"; tabla.style.width = ancho + "px"; tabla.style.minWidth = "100%";
     tabla.innerHTML = `<colgroup>${puede ? '<col style="width:38px">' : ""}${cols.map(c => `<col style="width:${anchoCol(c)}px">`).join("")}</colgroup><thead><tr>
         ${puede ? `<th class="col-sel"><input type="checkbox" class="sel" id="sel-todas" ${todasElegidas ? "checked" : ""} aria-label="Elegir todas las filas que se ven"></th>` : ""}
-        ${cols.map(c => `<th class="${c.clase.includes("num") ? "num" : ""}">${esc(c.titulo)}</th>`).join("")}</tr></thead>
+        ${cols.map(c => ORDENABLES.includes(c.clave)
+          ? `<th class="${c.clase.includes("num") ? "num" : ""} th-orden" data-c="${c.clave}" draggable="true" title="${titulosOrden(c.clave)} (arrastrá el encabezado para mover la columna)"><span class="th-txt">${esc(c.titulo)}${flechaOrden(c.clave)}</span></th>`
+          : `<th class="${c.clase.includes("num") ? "num" : ""}" data-c="${c.clave}" draggable="true" title="Arrastrá el encabezado para mover la columna">${esc(c.titulo)}</th>`).join("")}</tr></thead>
       <tbody>${filasTabla.length ? "" : `<tr><td colspan="${cols.length + (puede ? 1 : 0)}" class="vacio">${filas.length ? "Nada coincide con el filtro." : "Todavía no hay órdenes de compra cargadas."}</td></tr>`}</tbody>`;
     $("planilla-tabla")._filas = filasTabla;
     // Altura de cada fila: se estima y se corrige al medir lo dibujado
@@ -216,7 +268,7 @@
   // (mientras se revisa en la web, para que las filas no salten).
   function refrescarCeldas(codigos, claves, siFiltraTodo = true) {
     const falta = $("planilla-falta").value;
-    if (siFiltraTodo && falta && claves.some(k => k === falta || (k === "web_estado" && falta.startsWith("web_")) || (falta === "subir_web" && (k === "cargado_web" || k === "sin_stock")))) return pintar();
+    if (siFiltraTodo && falta && claves.some(k => k === falta || (k === "web_estado" && falta.startsWith("web_")) || (falta === "subir_web" && (k === "cargado_web" || k === "sin_stock" || k === "llego")))) return pintar();
     const set = new Set(codigos), lista = mostradas(), cols = visibles().filter(c => claves.includes(c.clave));
     if (!cols.length) return;
     document.querySelectorAll("#planilla-tabla tbody tr[data-i]").forEach(tr => {
@@ -444,7 +496,7 @@
   // Cambia el dato en todas las filas del mismo código (es del artículo, no de la OC)
   function aplicarLocal(codigos, campo, valor) {
     const set = new Set(codigos);
-    filas.forEach(f => { if (set.has(f.codigo)) f[campo] = valor; });
+    filas.forEach(f => { if (set.has(f.codigo) || (campo === "llego" && f.es_variante && set.has(f.padre))) f[campo] = valor; });
   }
 
   async function tildar(input) {
@@ -830,6 +882,7 @@
     $("planilla-csv").addEventListener("click", exportar);
     $("planilla-columnas").addEventListener("click", abrirColumnas);
     $("columnas-guardar").addEventListener("click", guardarColumnas);
+    $("columnas-orden").addEventListener("click", () => { ordenCols = []; guardarVista(); $("dlg-columnas").close(); pintar(); toast("Columnas en el orden original."); });
     $("columnas-todas").addEventListener("click", () => $("columnas-lista").querySelectorAll("input").forEach(i => { i.checked = true; }));
     $("form-articulo").addEventListener("submit", guardarArticulo);
     $("ar-crear-variantes").addEventListener("click", crearVariantes);
@@ -875,8 +928,39 @@
         pintarSeleccion();
       }
     });
+    // Mover columnas: se arrastra el encabezado y se suelta sobre otra columna
+    let colArrastrada = null;
+    const thDe = e => e.target.closest && e.target.closest("#planilla-tabla th[data-c]");
+    tabla.addEventListener("dragstart", e => {
+      const th = thDe(e);
+      if (!th) return;
+      colArrastrada = th.dataset.c;
+      th.classList.add("arrastrando");
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", colArrastrada);
+    });
+    tabla.addEventListener("dragover", e => {
+      const th = thDe(e);
+      if (!colArrastrada || !th) return;
+      e.preventDefault();
+      tabla.querySelectorAll("th.soltar-aca").forEach(x => { if (x !== th) x.classList.remove("soltar-aca"); });
+      if (th.dataset.c !== colArrastrada) th.classList.add("soltar-aca");
+    });
+    tabla.addEventListener("drop", e => {
+      const th = thDe(e);
+      if (!colArrastrada || !th) return;
+      e.preventDefault();
+      const desde = colArrastrada; colArrastrada = null;
+      moverColumna(desde, th.dataset.c);
+    });
+    tabla.addEventListener("dragend", () => {
+      colArrastrada = null;
+      tabla.querySelectorAll("th.arrastrando, th.soltar-aca").forEach(x => x.classList.remove("arrastrando", "soltar-aca"));
+    });
     tabla.addEventListener("click", e => {
       if (huboArrastre) return; // terminó un arrastre de celdas: no es un clic
+      const th = thDe(e);
+      if (th) { if (ORDENABLES.includes(th.dataset.c)) ordenarPor(th.dataset.c); return; }
       quitarRango();
       if (!editable() || e.target.closest("a")) return; // los enlaces (buscar en la web) hacen lo suyo
       const sel = e.target.closest("input.sel:not(#sel-todas)");
@@ -886,7 +970,7 @@
       if (e.target.closest("input")) return; // las casillas se manejan en "change"
       // Clic en la celda de una casilla (no justo en el cuadradito): la tilda igual
       const celda = e.target.closest("td.celda-tilde");
-      if (celda) { const c = celda.querySelector("input.tilde"); c.checked = !c.checked; return tildar(c); }
+      if (celda) { const c = celda.querySelector("input.tilde"); if (!c) return; c.checked = !c.checked; return tildar(c); }
       if (e.target.closest("td.col-sel")) { const c = e.target.closest("td").querySelector("input.sel"); c.checked = !c.checked; return elegir(c, e.shiftKey); }
       const tr = e.target.closest("tr[data-i]");
       if (tr) abrirArticulo(mostradas()[Number(tr.dataset.i)]);
