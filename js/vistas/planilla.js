@@ -66,7 +66,7 @@
     ["razon_social", "Razón social", "Compra"],
     ["cantidad", "Cantidad", "Compra", f => f.es_variante ? "" : fmtNum(f.cantidad), "num"],
     ["precio_unitario", "Precio unit.", "Compra", f => f.es_variante ? "" : fmtPesos(f.precio_unitario), "num"],
-    ["estado", "Estado", "Compra", f => chipEstado(f.estado)],
+    ["estado", "Estado", "Compra", f => f.estado ? chipEstado(f.estado) : ""],
     ["pendiente", "Falta", "Compra", f => f.es_variante ? "" : fmtNum(f.pendiente), "num"],
     ["dias_desde_orden", "Días", "Compra", f => fmtNum(f.dias_desde_orden), "num"],
     ["ultima_recepcion", "Última llegada", "Compra", f => fmtFecha(f.ultima_recepcion)],
@@ -85,6 +85,7 @@
   const OCULTAS_DE_ENTRADA = ["proveedor", "razon_social"];
 
   let filas = [];
+  let conOrden = true; // interruptor "Con orden de compra": activado al abrir; apagado muestra los artículos sin orden
   let ocultas = new Set();
   let editando = null;
   const seleccion = new Set(); // códigos elegidos para marcar varios juntos
@@ -253,7 +254,7 @@
         ${cols.map(c => ORDENABLES.includes(c.clave)
           ? `<th class="${c.clase.includes("num") ? "num" : ""} th-orden" data-c="${c.clave}" draggable="true" title="${titulosOrden(c.clave)} (arrastrá el encabezado para mover la columna)"><span class="th-txt">${esc(c.titulo)}${flechaOrden(c.clave)}</span></th>`
           : `<th class="${c.clase.includes("num") ? "num" : ""}" data-c="${c.clave}" draggable="true" title="Arrastrá el encabezado para mover la columna">${esc(c.titulo)}</th>`).join("")}</tr></thead>
-      <tbody>${filasTabla.length ? "" : `<tr><td colspan="${cols.length + (puede ? 1 : 0)}" class="vacio">${filas.length ? "Nada coincide con el filtro." : "Todavía no hay órdenes de compra cargadas."}</td></tr>`}</tbody>`;
+      <tbody>${filasTabla.length ? "" : `<tr><td colspan="${cols.length + (puede ? 1 : 0)}" class="vacio">${filas.length ? "Nada coincide con el filtro." : (conOrden ? "Todavía no hay órdenes de compra cargadas." : "No hay artículos sin orden de compra.")}</td></tr>`}</tbody>`;
     $("planilla-tabla")._filas = filasTabla;
     // Altura de cada fila: se estima y se corrige al medir lo dibujado
     alturas = new Array(filasTabla.length).fill(ALTO_ESTIMADO);
@@ -325,8 +326,13 @@
 
   async function mostrar() {
     $("planilla-tabla").innerHTML = R.util.esqueleto.tabla(9, 9);
+    const conOrdenAlPedir = conOrden;
     try {
-      const [datos, pref] = await Promise.all([R.api.vistas.planilla({ alActualizar: actualizadas }), R.api.preferencias.obtener()]);
+      // "Con orden de compra" (siempre al abrir): una fila por artículo de cada orden. Apagado: los artículos que todavía no tienen orden.
+      const fuente = conOrden ? R.api.vistas.planilla : R.api.vistas.articulosSinOrden;
+      const [datos, pref] = await Promise.all([
+        fuente({ alActualizar: d => { if (conOrden === conOrdenAlPedir) actualizadas(d); } }), R.api.preferencias.obtener()]);
+      if (conOrden !== conOrdenAlPedir) return; // se cambió el interruptor mientras cargaba: ya se pidió el otro conjunto
       filas = datos;
       ocultas = new Set(pref || OCULTAS_DE_ENTRADA);
     } catch (e) {
@@ -944,6 +950,11 @@
     $("planilla-proveedor").addEventListener("change", pintar);
     $("planilla-estado").addEventListener("change", pintar);
     $("planilla-falta").addEventListener("change", pintar);
+    $("planilla-con-orden").addEventListener("change", e => {
+      conOrden = e.target.checked;
+      seleccion.clear(); ultimoClic = null;
+      mostrar();
+    });
     $("planilla-csv").addEventListener("click", exportar);
     $("planilla-columnas").addEventListener("click", abrirColumnas);
     $("columnas-guardar").addEventListener("click", guardarColumnas);

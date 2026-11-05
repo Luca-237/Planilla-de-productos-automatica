@@ -537,3 +537,18 @@ test('registro de backups: solo el admin lo ve y nadie lo escribe desde la pági
   await assert.rejects(como(U.admin, "insert into public.backups_registro (estado) values ('ok')"), /permission denied/);
   await assert.rejects(como(null, 'select * from public.backups_registro'), /permission denied/);
 });
+
+test('artículos sin orden: la vista lista los que no tienen orden (ni su principal) y los ve cualquier usuario con sesión', async () => {
+  await cargarOC(oc('0001-00000088', '2026-10-01', [['CO1', 1]]));
+  await db.exec(`insert into public.articulos (codigo, descripcion, descripcion_web, descripcion_ok) values ('SO1', 'SUELTO UNO', 'Texto web', true), ('SO2', 'SUELTO DOS', '', false);
+                 insert into public.articulos (codigo, descripcion, tipo, padre_codigo) values ('CO1-X', 'VARIANTE DE CO1', 'VARIANTE', 'CO1'), ('SO1-X', 'VARIANTE DE SO1', 'VARIANTE', 'SO1')`);
+  const sin = (u) => como(u, "select codigo, nombre, orden, estado, descripcion_web, descripcion_ok, es_variante from public.v_articulos_sin_orden where codigo in ('CO1', 'CO1-X', 'SO1', 'SO1-X', 'SO2') order by codigo");
+  const filas = await sin(U.consulta);
+  assert.deepEqual(filas.map(f => f.codigo), ['SO1', 'SO1-X', 'SO2']); // CO1 tiene orden y su variante cuelga de un artículo con orden
+  assert.deepEqual(filas[0], { codigo: 'SO1', nombre: 'SUELTO UNO', orden: null, estado: null, descripcion_web: 'Texto web', descripcion_ok: true, es_variante: false });
+  assert.equal(filas[1].es_variante, true);
+  // Al cargarle una orden deja de salir
+  await cargarOC(oc('0001-00000089', '2026-10-02', [['SO2', 3]]));
+  assert.deepEqual((await sin(U.carga)).map(f => f.codigo), ['SO1', 'SO1-X']);
+  await assert.rejects(como(null, 'select * from public.v_articulos_sin_orden'), /permission denied/);
+});

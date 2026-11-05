@@ -539,3 +539,13 @@ a.web-chip:hover { text-decoration:underline; }
 #planilla-tabla th .orden-ico.sin { color:var(--muted); opacity:.5; }
 #planilla-tabla th.arrastrando { opacity:.45; }
 #planilla-tabla th.soltar-aca { box-shadow:inset 3px 0 0 var(--verde); background:var(--hover); }
+
+/* Interruptor (ej. "Con orden de compra" en la Planilla) */
+.filtro-interruptor { align-self:flex-end; padding-bottom:6px; }
+.interruptor { display:inline-flex; align-items:center; gap:9px; margin:0; cursor:pointer; color:var(--texto); font-size:14px; font-weight:600; white-space:nowrap; }
+.interruptor input { position:absolute; opacity:0; width:1px; height:1px; }
+.interruptor-pista { position:relative; width:38px; height:22px; border-radius:var(--r-pill); background:var(--linea); transition:background .15s; flex:none; }
+.interruptor-pista::after { content:""; position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.3); transition:transform .15s; }
+.interruptor input:checked + .interruptor-pista { background:var(--verde); }
+.interruptor input:checked + .interruptor-pista::after { transform:translateX(16px); }
+.interruptor input:focus-visible + .interruptor-pista { outline:2px solid var(--verde); outline-offset:2px; }

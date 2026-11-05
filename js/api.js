@@ -113,6 +113,8 @@
     pendientes: opciones => cacheado("pendientes", () => todo(() => sb.from("v_pendientes").select("*").order("fecha_orden").order("orden").order("renglon")).then(numeros), opciones),
     lineas: opciones => cacheado("lineas", () => todo(() => sb.from("v_oc_lineas").select("*").order("fecha_orden", { ascending: false }).order("orden").order("renglon")).then(numeros), opciones),
     planilla: opciones => cacheado("planilla", () => todo(() => sb.from("v_planilla").select("*").order("fecha_orden", { ascending: false }).order("orden").order("padre").order("es_variante").order("codigo")).then(numeros), opciones),
+    // Artículos cargados que todavía no tienen una orden de compra (Planilla con "Con orden de compra" apagado)
+    articulosSinOrden: opciones => cacheado("sin_orden", () => todo(() => sb.from("v_articulos_sin_orden").select("*").order("codigo")).then(numeros), opciones),
     sobrantes: opciones => cacheado("sobrantes", () => todo(() => sb.from("v_sobrantes").select("*").order("fecha", { ascending: false })).then(numeros), opciones),
   };
 
@@ -186,13 +188,14 @@
       const hechas = chequear(await sb.from("articulos").update(datos).eq("codigo", codigo).select("codigo, fecha_alta_web"));
       if (!hechas.length) throw new Error("No se guardó: no tenés permiso o el artículo ya no existe.");
       // La planilla guardada se parcha en el lugar (no hace falta pedirla entera de nuevo)
-      parchar("planilla", fs => fs.forEach(f => { if (f.codigo === codigo) Object.assign(f, datos, { fecha_alta_web: hechas[0].fecha_alta_web }); }));
+      const parche = fs => fs.forEach(f => { if (f.codigo === codigo) Object.assign(f, datos, { fecha_alta_web: hechas[0].fecha_alta_web }); });
+      parchar("planilla", parche); parchar("sin_orden", parche);
       return hechas[0]; // la base puede completar la fecha de alta sola
     },
     // Crea las variantes (padre-SUFIJO) con los colores elegidos
     async crearVariantes(padre, colorIds) {
       const r = chequear(await sb.rpc("crear_variantes", { p_padre: padre, p_colores: colorIds }));
-      await invalidar(["planilla"]);
+      await invalidar(["planilla", "sin_orden"]);
       return r;
     },
     // Marcar o desmarcar una casilla en varios artículos juntos (de a 200 códigos por pedido)
@@ -202,7 +205,8 @@
         const lote = codigos.slice(i, i + 200);
         const hechas = chequear(await sb.from("articulos").update(datos).in("codigo", lote).select("codigo, fecha_alta_web"));
         todas.push(...hechas);
-        parchar("planilla", fs => { const porCodigo = new Map(hechas.map(h => [h.codigo, h])); fs.forEach(f => { const h = porCodigo.get(f.codigo); if (h) Object.assign(f, datos, { fecha_alta_web: h.fecha_alta_web }); }); });
+        const parche = fs => { const porCodigo = new Map(hechas.map(h => [h.codigo, h])); fs.forEach(f => { const h = porCodigo.get(f.codigo); if (h) Object.assign(f, datos, { fecha_alta_web: h.fecha_alta_web }); }); };
+        parchar("planilla", parche); parchar("sin_orden", parche);
         if (hechas.length < lote.length) throw new Error(`Se guardaron ${i + hechas.length} de ${codigos.length}: no tenés permiso o algún artículo ya no existe.`);
       }
       return todas;
@@ -283,7 +287,7 @@
           const res = JSON.parse(datos);
           resultados.push(res);
           // La función ya guardó el resultado en la base: se refleja en la planilla guardada
-          if (res.estado !== "error") parchar("planilla", fs => fs.forEach(f => { if (f.codigo === res.codigo) Object.assign(f, { web_estado: res.estado, web_url: res.url, web_nombre: res.nombre, web_revisado_en: new Date().toISOString() }); }));
+          if (res.estado !== "error") for (const k of ["planilla", "sin_orden"]) parchar(k, fs => fs.forEach(f => { if (f.codigo === res.codigo) Object.assign(f, { web_estado: res.estado, web_url: res.url, web_nombre: res.nombre, web_revisado_en: new Date().toISOString() }); }));
           if (alResultado) alResultado(res);
         }
       }

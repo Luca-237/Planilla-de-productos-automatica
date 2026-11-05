@@ -204,6 +204,11 @@
     vistas: {
       pendientes: () => espera(vLineas().filter(v => ["pendiente", "parcial"].includes(v.estado)).sort((a, b) => a.fecha_orden.localeCompare(b.fecha_orden))),
       lineas: () => espera(vLineas()),
+    // Artículos cargados sin ninguna orden (como v_articulos_sin_orden)
+    articulosSinOrden: () => espera([...articulos.values()].filter(a => !lineas.some(l => l.codigo === a.codigo) && (!a.padre_codigo || !lineas.some(l => l.codigo === a.padre_codigo)))
+      .sort((a, b) => a.codigo.localeCompare(b.codigo))
+      .map(a => ({ ...a, orden: null, fecha_orden: null, proveedor: (proveedores.find(p => p.id === a.proveedor_id) || {}).nombre || "", nombre: a.descripcion, estado: null,
+        padre: a.padre_codigo || a.codigo, es_variante: a.tipo === "VARIANTE", n_variantes: hijos(a.codigo).length, color: colorDe(a).nombre || null, color_codigo: colorDe(a).codigo || null, llego: !!a.llego }))),
       // Cada artículo seguido de sus variantes (que no traen cantidades), como v_planilla
       planilla: () => espera(vLineas().flatMap(v => {
         const a = articulos.get(v.codigo), c = colorDe(a);
