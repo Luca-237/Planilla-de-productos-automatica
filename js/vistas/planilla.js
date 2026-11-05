@@ -359,6 +359,7 @@
   // Se arrastra con el mouse sobre la tabla y se copia con Ctrl+C (o el botón Copiar): sale como texto con
   // tabuladores, listo para pegar en una planilla u otro programa. Un clic suelto sigue abriendo lo de siempre.
   let rango = null;                   // { i1, i2, c1, c2 }: filas de la tabla y columnas visibles
+  let codigoACopiar = null;           // código de la última celda "Código" tocada: Ctrl+C copia solo eso
   let ancla = null, arrastrando = false, huboArrastre = false, ultimoPunto = null, autoScroll = null;
 
   const celdaDe = el => {
@@ -481,17 +482,24 @@
       // el clic que viene justo después del arrastre no tiene que abrir nada
       if (huboArrastre) setTimeout(() => { huboArrastre = false; }, 0);
     });
-    // Ctrl+C con celdas elegidas (si no se está escribiendo en otro lado)
+    // Ctrl+C con celdas elegidas o después de un clic en un código (si no se está escribiendo en otro lado).
+    // Del código se copia solo el código, sin el nombre del proveedor que se ve al lado.
     document.addEventListener("copy", e => {
       const a = document.activeElement;
-      if (!rango || $("vista-planilla").hidden || document.querySelector("dialog[open]") || (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
-      e.clipboardData.setData("text/plain", textoDelRango());
+      if (!(rango || codigoACopiar) || $("vista-planilla").hidden || document.querySelector("dialog[open]") || (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
+      e.clipboardData.setData("text/plain", rango ? textoDelRango() : codigoACopiar);
       e.preventDefault();
-      toast(`Copiado: ${plural(rango.i2 - rango.i1 + 1, "fila", "filas")} × ${plural(rango.c2 - rango.c1 + 1, "columna", "columnas")}.`);
+      toast(rango ? `Copiado: ${plural(rango.i2 - rango.i1 + 1, "fila", "filas")} × ${plural(rango.c2 - rango.c1 + 1, "columna", "columnas")}.` : `Copiado: ${codigoACopiar}`);
     });
     // Un clic afuera de la tabla (y de las barras) o Escape sacan la selección
-    document.addEventListener("mousedown", e => { if (rango && !e.target.closest("#planilla-tabla, #planilla-rango, .toast, dialog")) quitarRango(); });
-    document.addEventListener("keydown", e => { if (e.key === "Escape" && rango && !document.querySelector("dialog[open]") && popIndice == null) quitarRango(); });
+    document.addEventListener("mousedown", e => {
+      if (!e.target.closest('#planilla-tabla td[data-c="codigo"]')) codigoACopiar = null; // el clic en un código lo vuelve a anotar
+      if (rango && !e.target.closest("#planilla-tabla, #planilla-rango, .toast, dialog")) quitarRango();
+    });
+    document.addEventListener("keydown", e => {
+      if (e.key === "Escape") codigoACopiar = null;
+      if (e.key === "Escape" && rango && !document.querySelector("dialog[open]") && popIndice == null) quitarRango();
+    });
     $("rango-copiar").addEventListener("click", () => copiarRango(false));
     $("rango-codigos").addEventListener("click", () => copiarRango(true));
     $("rango-catalogo").addEventListener("click", armarCatalogo);
@@ -1022,6 +1030,9 @@
       const th = thDe(e);
       if (th) { if (ORDENABLES.includes(th.dataset.c)) ordenarPor(th.dataset.c); return; }
       quitarRango();
+      // Clic en el código: Ctrl+C copia solo ese código (también para quien solo consulta)
+      const tdCodigo = e.target.closest('td[data-c="codigo"]');
+      codigoACopiar = tdCodigo && !e.target.closest("a") ? mostradas()[Number(tdCodigo.parentElement.dataset.i)]?.codigo ?? null : null;
       if (!editable() || e.target.closest("a")) return; // los enlaces (buscar en la web) hacen lo suyo
       const sel = e.target.closest("input.sel:not(#sel-todas)");
       if (sel) return elegir(sel, e.shiftKey);
