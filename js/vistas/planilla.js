@@ -198,6 +198,9 @@
     const cab = tabla.tHead ? tabla.tHead.offsetHeight : 0;           // el encabezado ocupa lugar dentro del desplazamiento
     const arriba = Math.max(0, w.scrollTop - cab), alto = w.clientHeight || 600;
     const va = filaEn(arriba), vb = filaEn(arriba + alto) + 1;         // filas que se ven
+    // Fila de referencia y dónde está en pantalla: si al medir las filas nuevas cambian las alturas estimadas,
+    // se corrige el desplazamiento para que lo que se ve no se mueva (antes saltaba y "comía" el scroll hacia arriba)
+    const anclaI = va, anclaPos = acum[anclaI] + cab - w.scrollTop;
     // Mientras lo que se ve siga bien adentro de lo dibujado no se toca nada: se redibuja en tandas, no en cada fila
     if (!forzar && ventana.a >= 0 && (va - ventana.a >= 4 || ventana.a === 0) && (ventana.b - vb >= 4 || ventana.b === lista.length)) return;
     const a = Math.max(0, va - MARGEN_FILAS), b = Math.min(lista.length, vb + MARGEN_FILAS);
@@ -208,7 +211,9 @@
     const solapa = !forzar && ventana.a >= 0 && a < ventana.b && b > ventana.a;
     let nuevas = [];
     if (!solapa) {
-      tbody.innerHTML = espaciador(0) + html(a, b) + espaciador(0);
+      // Los espaciadores nacen con su altura estimada: con altura 0 la tabla se achicaba de golpe al medir las filas
+      // y el navegador acomodaba el desplazamiento cerca del principio (la barra "saltaba" o no dejaba subir desde el final)
+      tbody.innerHTML = espaciador(acum[a]) + html(a, b) + espaciador(acum[lista.length] - acum[b]);
       nuevas = [...tbody.querySelectorAll("tr[data-i]")];
     } else {
       // Se conservan las filas que siguen a la vista: solo se sacan las que quedaron lejos y se agregan las que entran
@@ -217,6 +222,9 @@
       while (abajoEsp.previousElementSibling !== arribaEsp && Number(abajoEsp.previousElementSibling.dataset.i) >= b) abajoEsp.previousElementSibling.remove();
       if (a < ventana.a) { arribaEsp.insertAdjacentHTML("afterend", html(a, Math.min(ventana.a, b))); }
       if (b > ventana.b) { abajoEsp.insertAdjacentHTML("beforebegin", html(Math.max(ventana.b, a), b)); }
+      // Los espaciadores se ajustan antes de medir, para que la altura total no cambie mientras se miden las filas nuevas
+      arribaEsp.firstElementChild.style.height = acum[a] + "px";
+      abajoEsp.firstElementChild.style.height = (acum[lista.length] - acum[b]) + "px";
       nuevas = [...tbody.querySelectorAll("tr[data-i]")].filter(tr => { const i = Number(tr.dataset.i); return i < ventana.a || i >= ventana.b; });
     }
     ventana = { a, b };
@@ -230,6 +238,10 @@
     const esp = tbody.querySelectorAll("tr.esp td");
     esp[0].style.height = acum[a] + "px";
     esp[1].style.height = (acum[lista.length] - acum[b]) + "px";
+    if (cambio) {
+      const dif = (acum[anclaI] + cab - w.scrollTop) - anclaPos;
+      if (Math.abs(dif) > 1) w.scrollTop += dif;
+    }
     marcarRango();
   }
 
