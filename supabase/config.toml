@@ -9,3 +9,7 @@ verify_jwt = false
 # Misma razón que admin-usuarios: la función verifica la sesión y el rol por su cuenta.
 [functions.buscar-en-web]
 verify_jwt = false
+
+# Backup diario: la función se protege con su propio token (BACKUP_TOKEN), no con una sesión de usuario.
+[functions.backup-datos]
+verify_jwt = false

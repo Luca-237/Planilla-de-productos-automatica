@@ -11,9 +11,9 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;600;700&family=Karla:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%23e84e1b'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='Georgia,serif' font-size='20' fill='%23fff'%3EC%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="css/app.css?v=20261029.29">
+<link rel="stylesheet" href="css/app.css?v=20261029.31">
 <!-- El color de fondo elegido se aplica después de la hoja de estilos (para pisarla) y antes de dibujar, así no parpadea -->
-<script src="js/color.js?v=20261029.29"></script>
+<script src="js/color.js?v=20261029.31"></script>
 <script>try { ColorFondo.aplicar(ColorFondo.leer()); } catch (e) {}</script>
 </head>
 <body>
@@ -167,6 +167,9 @@
       <div class="vista-head">
         <div><h1>Planilla</h1><p class="sub">Una fila por artículo de cada orden de compra, con lo que llegó y los datos de la web.</p></div>
         <div class="controles">
+          <button type="button" class="btn-sec" id="planilla-editar" data-puede-cargar hidden disabled title="Elegí un artículo (clic en su código o su nombre) para editar todos sus datos">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/></svg>
+            Editar producto</button>
           <button type="button" class="btn-sec primario" id="planilla-revisar-web" data-puede-cargar hidden title="Revisa si los artículos elegidos (o, si no hay elegidos, todos los que se ven) ya están publicados en la web de Cindy">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
             <span id="planilla-revisar-texto">Revisar en la web</span></button>
@@ -246,6 +249,10 @@
           <button type="button" class="btn-sec" id="seleccion-catalogo" data-puede-cargar hidden>Armar catálogo</button>
           <button type="button" class="link" id="seleccion-limpiar">Quitar selección</button>
         </div>
+        <div class="barra-seleccion barra-fuera" id="planilla-fuera" role="status" hidden>
+          <span id="fuera-cuantas"></span>
+          <button type="button" class="btn-sec" id="fuera-actualizar" title="Vuelve a aplicar los filtros: las filas que ya no coinciden salen de la lista">Actualizar lista</button>
+        </div>
         <div class="tabla-wrap"><table class="tabla grilla" id="planilla-tabla"></table></div>
         <p class="hint" id="planilla-pie"></p>
       </div>
@@ -314,6 +321,11 @@
         <p class="hint">El color se lleva a un tono pastel y de ahí se calculan los bordes, los encabezados, las filas bajo el mouse y el modo oscuro, para que todo se lea bien. El naranja de la marca no cambia.</p>
         <p class="hint" id="cfg-aviso" hidden></p>
         <p class="hint">El modo claro u oscuro se cambia con el botón del sol que está arriba, junto a tu nombre.</p>
+      </div>
+      <div class="caja" id="cfg-backups" data-solo-admin hidden>
+        <h2>Backup diario</h2>
+        <p class="hint">Todos los días a las 13:00 se guarda en Google Drive un Excel con todos los datos. Acá se ve cómo salieron los últimos. Si el último dice "Con error" o no hay uno de hoy, avisale a quien administra el sistema.</p>
+        <div class="tabla-wrap"><table class="tabla" id="cfg-backups-tabla"></table></div>
       </div>
     </section>
 
@@ -557,27 +569,27 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
-<script src="js/config.js?v=20261029.29"></script>
-<script src="js/utils.js?v=20261029.29"></script>
-<script src="js/lector-manager.js?v=20261029.29"></script>
-<script src="js/deshacer.js?v=20261029.29"></script>
-<script src="js/catalogo-formato.js?v=20261029.29"></script>
-<script src="js/importador-planilla.js?v=20261029.29"></script>
-<script src="js/cache.js?v=20261029.29"></script>
-<script src="js/api.js?v=20261029.29"></script>
+<script src="js/config.js?v=20261029.31"></script>
+<script src="js/utils.js?v=20261029.31"></script>
+<script src="js/lector-manager.js?v=20261029.31"></script>
+<script src="js/deshacer.js?v=20261029.31"></script>
+<script src="js/catalogo-formato.js?v=20261029.31"></script>
+<script src="js/importador-planilla.js?v=20261029.31"></script>
+<script src="js/cache.js?v=20261029.31"></script>
+<script src="js/api.js?v=20261029.31"></script>
 
-<script src="js/vistas/acceso.js?v=20261029.29"></script>
-<script src="js/vistas/pendientes.js?v=20261029.29"></script>
-<script src="js/vistas/cargar.js?v=20261029.29"></script>
-<script src="js/vistas/catalogo.js?v=20261029.29"></script>
-<script src="js/vistas/planilla.js?v=20261029.29"></script>
-<script src="js/vistas/colores.js?v=20261029.29"></script>
-<script src="js/vistas/proveedores.js?v=20261029.29"></script>
-<script src="js/vistas/documentos.js?v=20261029.29"></script>
-<script src="js/vistas/usuarios.js?v=20261029.29"></script>
-<script src="js/vistas/importar.js?v=20261029.29"></script>
-<script src="js/vistas/configuracion.js?v=20261029.29"></script>
+<script src="js/vistas/acceso.js?v=20261029.31"></script>
+<script src="js/vistas/pendientes.js?v=20261029.31"></script>
+<script src="js/vistas/cargar.js?v=20261029.31"></script>
+<script src="js/vistas/catalogo.js?v=20261029.31"></script>
+<script src="js/vistas/planilla.js?v=20261029.31"></script>
+<script src="js/vistas/colores.js?v=20261029.31"></script>
+<script src="js/vistas/proveedores.js?v=20261029.31"></script>
+<script src="js/vistas/documentos.js?v=20261029.31"></script>
+<script src="js/vistas/usuarios.js?v=20261029.31"></script>
+<script src="js/vistas/importar.js?v=20261029.31"></script>
+<script src="js/vistas/configuracion.js?v=20261029.31"></script>
 
-<script src="js/main.js?v=20261029.29"></script>
+<script src="js/main.js?v=20261029.31"></script>
 </body>
 </html>

@@ -221,6 +221,12 @@
     async actualizar(id, d) { chequear(await sb.from("colores").update(d).eq("id", id)); await invalidar(["colores", "planilla"]); },
   };
 
+  // ---------- Backups diarios (solo admin los ve; los escribe el script de backup) ----------
+  const backups = {
+    ultimos: async (n = 10) => chequear(await sb.from("backups_registro").select("id, creado_en, estado, archivo, drive_url, bytes, error, origen")
+      .order("creado_en", { ascending: false }).limit(n)),
+  };
+
   // ---------- Preferencias del usuario (columnas ocultas) ----------
   const preferencias = {
     // Solo las cambia este usuario: se guarda sin vencimiento y se actualiza al guardar
@@ -337,5 +343,5 @@
     resetearPassword: (id, password) => usuarios.llamar("resetear_password", { id, password }),
   };
 
-  R.api = { configurado, iniciar, auth, documentos, vistas, ordenes, remitos, proveedores, articulos, colores, preferencias, usuarios, web, importacion, cache, asignaciones };
+  R.api = { configurado, iniciar, auth, documentos, vistas, ordenes, remitos, proveedores, articulos, colores, preferencias, usuarios, web, importacion, cache, asignaciones, backups };
 })(window.COMPRAS);

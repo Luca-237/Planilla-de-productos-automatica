@@ -287,6 +287,10 @@ dialog.dlg[open]::backdrop { animation:fundido var(--t-lenta) var(--ease) both; 
 .tabla tr.seleccionada td:first-child { box-shadow:inset 3px 0 0 var(--rango); }
 .barra-seleccion { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 12px; padding:9px 14px; border-radius:var(--r-sm); background:var(--verde-suave); font-size:14px; animation:aparecer var(--t) var(--ease) both; }
 .barra-seleccion select { width:auto; padding:6px 8px; }
+/* Filas que dejaron de coincidir con el filtro: quedan a la vista hasta "Actualizar lista" */
+.tabla tr.fuera-filtro td { opacity:.5; }
+.tabla tr.fuera-filtro:hover td { opacity:.8; }
+.barra-fuera { background:var(--naranja-suave); color:var(--naranja-texto); }
 
 /* ---------- Planilla: descripción web rápida ---------- */
 .tabla td.celda-desc { min-width:220px; max-width:320px; cursor:text; }

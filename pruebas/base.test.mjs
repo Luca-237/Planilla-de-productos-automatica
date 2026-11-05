@@ -529,3 +529,11 @@ test('las migraciones se pueden volver a correr sin perder datos', async () => {
   // Y sigue sin poder ejecutarse sin sesión
   await assert.rejects(como(null, `select public.cargar_remito('{}'::jsonb, false)`), /permission denied/);
 });
+
+test('registro de backups: solo el admin lo ve y nadie lo escribe desde la página', async () => {
+  await db.exec("insert into public.backups_registro (estado, archivo) values ('ok', 'backup-compras-cindy-2026-11-04.xlsx')");
+  assert.equal((await como(U.admin, 'select count(*)::int as n from public.backups_registro'))[0].n, 1);
+  for (const u of [U.carga, U.consulta]) assert.equal((await como(u, 'select count(*)::int as n from public.backups_registro'))[0].n, 0);
+  await assert.rejects(como(U.admin, "insert into public.backups_registro (estado) values ('ok')"), /permission denied/);
+  await assert.rejects(como(null, 'select * from public.backups_registro'), /permission denied/);
+});

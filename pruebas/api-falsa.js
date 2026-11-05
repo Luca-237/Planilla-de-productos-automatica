@@ -344,6 +344,10 @@
       },
     },
     cache: { vaciar: async () => {} },
+    backups: { ultimos: () => espera([
+      { id: 2, creado_en: new Date().toISOString(), estado: "ok", archivo: "backup-compras-cindy-demo.xlsx", drive_url: "", bytes: 1834000, error: "", origen: "programado" },
+      { id: 1, creado_en: new Date(Date.now() - 86400000).toISOString(), estado: "error", archivo: "", drive_url: "", bytes: null, error: "Google no dio el acceso (400): invalid_grant (demo)", origen: "programado" },
+    ]) },
     preferencias: { obtener: () => espera(ocultas), guardar: async c => { ocultas = c; } },
     usuarios: {
       listar: () => espera(usuarios),

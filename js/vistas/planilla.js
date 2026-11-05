@@ -4,7 +4,8 @@
 //  Cada usuario elige qué columnas ve (se guarda en "preferencias").
 //  Las casillas (Foto, Descripción OK, Sin stock…) se tildan en la misma
 //  tabla, una por una o a varios artículos juntos (columna de selección,
-//  con Shift + clic para elegir un rango como en Excel).
+//  con Shift + clic para elegir un rango como en Excel). Clic en una fila
+//  la elige; "Editar producto" (arriba) abre los datos del artículo elegido.
 // =====================================================================
 (function (R) {
   const { $, esc, norm, fmtFecha, fmtNum, fmtPesos, chipEstado, descargarCSV, hoy, toast, ESTADOS, etiquetaProveedor, plural } = R.util;
@@ -139,7 +140,8 @@
   const titulosOrden = clave => !ordenFilas || ordenFilas.clave !== clave ? "Tocá para ordenar: más recientes primero" : ordenFilas.dir === "desc" ? "Más recientes primero · tocá para ver las más antiguas" : "Más antiguas primero · tocá para quitar el orden";
   const mostradas = () => $("planilla-tabla")._filas || [];
 
-  function filtradas() {
+  // Lo que piden los filtros de arriba (buscador, proveedor, estado y "Mostrar"), como una función por fila
+  function criterioFiltros() {
     const q = norm($("planilla-buscar").value), prov = $("planilla-proveedor").value, est = $("planilla-estado").value;
     const falta = $("planilla-falta").value;
     // "sin_stock" y "ya_no_esta" muestran los marcados; el resto, los que faltan
@@ -152,10 +154,14 @@
       if (falta === "web_no") return f.web_estado === "no_esta";
       return ["sin_stock", "ya_no_esta"].includes(falta) ? !!f[falta] : !f[falta];
     };
-    const lista = filas.filter(f => (!prov || f.proveedor === prov) && (!est || f.estado === est) && pasa(f)
-      && (!q || norm(`${f.codigo} ${f.nombre} ${f.orden} ${f.proveedor} ${f.razon_social || ""}`).includes(q)));
+    return f => (!prov || f.proveedor === prov) && (!est || f.estado === est) && pasa(f)
+      && (!q || norm(`${f.codigo} ${f.nombre} ${f.orden} ${f.proveedor} ${f.razon_social || ""}`).includes(q));
+  }
+
+  function filtradas() {
+    const lista = filas.filter(criterioFiltros());
     // "Subir a la página" es una lista de trabajo: cada artículo una sola vez, aunque esté en varias órdenes (queda la más nueva)
-    if (falta === "subir_web") { const vistos = new Set(); return aplicarOrden(lista.filter(f => !vistos.has(f.codigo) && vistos.add(f.codigo))); }
+    if ($("planilla-falta").value === "subir_web") { const vistos = new Set(); return aplicarOrden(lista.filter(f => !vistos.has(f.codigo) && vistos.add(f.codigo))); }
     return aplicarOrden(lista);
   }
 
@@ -180,7 +186,7 @@
     while (lo < hi) { const m = (lo + hi) >> 1; if (acum[m + 1] <= y) lo = m + 1; else hi = m; }
     return lo;
   }
-  const filaHtml = (f, i, cols, puede) => `<tr class="${puede ? "clic" : ""} ${seleccion.has(f.codigo) ? "seleccionada" : ""} ${f.es_variante ? "fila-variante" : ""}" data-i="${i}">
+  const filaHtml = (f, i, cols, puede, ok) => `<tr class="${puede ? "clic" : ""} ${seleccion.has(f.codigo) ? "seleccionada" : ""} ${f.es_variante ? "fila-variante" : ""} ${ok(f) ? "" : "fuera-filtro"}" data-i="${i}">
         ${puede ? `<td class="col-sel"><input type="checkbox" class="sel" ${seleccion.has(f.codigo) ? "checked" : ""} aria-label="Elegir ${esc(f.codigo)}"></td>` : ""}
         ${cols.map(c => `<td class="${c.clase}" data-c="${c.clave}">${c.ver(f)}</td>`).join("")}</tr>`;
 
@@ -196,7 +202,8 @@
     const a = Math.max(0, va - MARGEN_FILAS), b = Math.min(lista.length, vb + MARGEN_FILAS);
     const tbody = tabla.tBodies[0], ncol = cols.length + (puede ? 1 : 0);
     const espaciador = alto => `<tr class="esp" aria-hidden="true"><td colspan="${ncol}" style="height:${alto}px"></td></tr>`;
-    const html = (desde, hasta) => lista.slice(desde, hasta).map((fila, k) => filaHtml(fila, desde + k, cols, puede)).join("");
+    const ok = criterioFiltros();
+    const html = (desde, hasta) => lista.slice(desde, hasta).map((fila, k) => filaHtml(fila, desde + k, cols, puede, ok)).join("");
     const solapa = !forzar && ventana.a >= 0 && a < ventana.b && b > ventana.a;
     let nuevas = [];
     if (!solapa) {
@@ -256,25 +263,39 @@
     $("planilla-pie").textContent = [
       lista.length > MAX_FILAS ? `Se muestran las primeras ${fmtNum(MAX_FILAS)} de ${fmtNum(lista.length)} filas: usá el buscador o los filtros.` :
         lista.length !== filas.length ? `Mostrando ${fmtNum(lista.length)} de ${fmtNum(filas.length)} filas.` : `${fmtNum(filas.length)} filas.`,
-      puede ? "Las casillas se guardan al tildarlas. Clic en la descripción para escribirla ahí mismo (Ctrl+Enter guarda y pasa al siguiente). Para marcar varios juntos, elegilos en la primera columna (Shift + clic elige un rango). Clic en el resto de la fila: todos los datos." : "",
+      puede ? "Las casillas se guardan al tildarlas. Clic en la descripción para escribirla ahí mismo (Ctrl+Enter guarda y pasa al siguiente). Clic en el código, el nombre o el resto de la fila: la elige (Shift + clic elige un rango); con un solo artículo elegido, \"Editar producto\" (arriba) abre todos sus datos." : "",
     ].filter(Boolean).join(" ");
     pintarBarraSeleccion();
+    marcarFueraDeFiltro();
   }
 
   // Redibuja solo esas celdas de las filas de esos códigos (rehacer las ~1000 filas de la tabla
-  // en cada cambio la ponía lenta). Si el filtro "Mostrar" depende de esos datos, la fila puede
-  // tener que aparecer o desaparecer: ahí se redibuja todo, salvo que se pida lo contrario
-  // (mientras se revisa en la web, para que las filas no salten).
-  function refrescarCeldas(codigos, claves, siFiltraTodo = true) {
-    const falta = $("planilla-falta").value;
-    if (siFiltraTodo && falta && claves.some(k => k === falta || (k === "web_estado" && falta.startsWith("web_")) || (falta === "subir_web" && (k === "cargado_web" || k === "sin_stock" || k === "llego")))) return pintar();
+  // en cada cambio la ponía lenta). Aunque la fila deje de coincidir con los filtros (por ejemplo,
+  // se desmarca "Llegó" con "Mostrar" en "Sin marcar como llegados"), queda a la vista, atenuada:
+  // la lista se vuelve a filtrar recién cuando se toca "Actualizar lista" o se cambia un filtro.
+  function refrescarCeldas(codigos, claves) {
     const set = new Set(codigos), lista = mostradas(), cols = visibles().filter(c => claves.includes(c.clave));
-    if (!cols.length) return;
+    if (cols.length) {
+      document.querySelectorAll("#planilla-tabla tbody tr[data-i]").forEach(tr => {
+        const fila = lista[Number(tr.dataset.i)];
+        if (!fila || !set.has(fila.codigo)) return;
+        cols.forEach(c => { const td = tr.querySelector(`td[data-c="${c.clave}"]`); if (td) td.innerHTML = c.ver(fila); });
+      });
+    }
+    marcarFueraDeFiltro();
+  }
+
+  // Atenúa las filas a la vista que ya no coinciden con los filtros y avisa cuántas son
+  function marcarFueraDeFiltro() {
+    const ok = criterioFiltros(), lista = mostradas();
     document.querySelectorAll("#planilla-tabla tbody tr[data-i]").forEach(tr => {
       const fila = lista[Number(tr.dataset.i)];
-      if (!fila || !set.has(fila.codigo)) return;
-      cols.forEach(c => { const td = tr.querySelector(`td[data-c="${c.clave}"]`); if (td) td.innerHTML = c.ver(fila); });
+      if (fila) tr.classList.toggle("fuera-filtro", !ok(fila));
     });
+    const n = lista.filter(f => !ok(f)).length;
+    $("planilla-fuera").hidden = !n;
+    $("fuera-cuantas").textContent = !n ? "" : n === 1 ? "1 fila ya no coincide con el filtro (se ve atenuada)."
+      : `${fmtNum(n)} filas ya no coinciden con el filtro (se ven atenuadas).`;
   }
 
   // Marca lo elegido en las filas a la vista, sin rehacer la tabla
@@ -293,6 +314,11 @@
   }
 
   function pintarBarraSeleccion() {
+    // "Editar producto" abre los datos de un artículo: hace falta uno solo elegido
+    const editar = $("planilla-editar");
+    editar.disabled = seleccion.size !== 1;
+    editar.title = seleccion.size === 1 ? `Editar todos los datos de ${[...seleccion][0]}`
+      : seleccion.size ? "Para editar, dejá elegido un solo artículo" : "Elegí un artículo (clic en su código o su nombre) para editar todos sus datos";
     $("planilla-seleccion").hidden = !seleccion.size;
     $("seleccion-cuantos").textContent = `${plural(seleccion.size, "artículo elegido", "artículos elegidos")}:`;
   }
@@ -519,7 +545,7 @@
       refrescarCeldas([f.codigo], campo === "cargado_web" ? ["fecha_alta_web", "web_estado", campo] : [campo]);
     } catch (e) {
       aplicarLocal([f.codigo], campo, antes);
-      refrescarCeldas([f.codigo], [campo], false);
+      refrescarCeldas([f.codigo], [campo]);
       toast(e.message, "error", 6000);
     }
   }
@@ -551,6 +577,14 @@
     }
     ultimoClic = i;
     pintarSeleccion();
+  }
+
+  // "Editar producto" del encabezado: abre el diálogo del único artículo elegido
+  function editarElegido() {
+    if (seleccion.size !== 1) return;
+    const codigo = [...seleccion][0];
+    const f = mostradas().find(x => x.codigo === codigo) || filas.find(x => x.codigo === codigo);
+    if (f) abrirArticulo(f);
   }
 
   // ---------- Descripción web rápida (ventanita sobre la celda) ----------
@@ -620,7 +654,7 @@
       const [r] = await R.api.web.revisar([f.codigo]);
       if (r.estado === "error") throw new Error(r.error);
       aplicarWeb([r]);
-      refrescarCeldas([f.codigo], ["web_estado"], false);
+      refrescarCeldas([f.codigo], ["web_estado"]);
     } catch (e) { toast(`No se pudo revisar en la web: ${e.message}`, "error", 6000); }
     // La ventanita puede seguir abierta sobre otra fila: solo se actualiza si es la misma
     const actual = popIndice != null && mostradas()[popIndice];
@@ -686,7 +720,7 @@
           alResultado: r => {
             hechos++;
             cuenta[r.estado] = (cuenta[r.estado] || 0) + 1;
-            if (r.estado !== "error") { aplicarWeb([r]); refrescarCeldas([r.codigo], ["web_estado"], false); }
+            if (r.estado !== "error") { aplicarWeb([r]); refrescarCeldas([r.codigo], ["web_estado"]); }
             avance();
           },
         });
@@ -708,8 +742,6 @@
       $("progreso-titulo").textContent = completa ? "Revisión terminada" : "Revisión detenida";
       $("progreso-detalle").textContent = completa ? "Listo: los resultados ya están en la columna \"En la web\"." : "Lo ya revisado quedó guardado.";
       setTimeout(() => { if (!revisionWeb) caja.hidden = true; }, completa ? 6000 : 4000);
-      // Con un filtro de la web en "Mostrar", recién ahora las filas se reacomodan
-      if ($("planilla-falta").value.startsWith("web_")) pintar();
     }
     if (!hechos) return;
     const partes = [`${fmtNum(cuenta.publicado)} en la web`, `${fmtNum(cuenta.solo_variantes)} por variantes`, `${fmtNum(cuenta.no_esta)} no están`];
@@ -789,7 +821,30 @@
     $("ar-color").value = f.color ? `${f.color} (${f.color_codigo})` : "";
     $("ar-colores").innerHTML = "";
     $("dlg-articulo").showModal();
+    fotoFormulario = estadoFormulario();
     pintarVariantes();
+  }
+
+  // Lo que se puede cambiar en el diálogo, para saber si al cerrarlo con un clic afuera se pierde algo
+  let fotoFormulario = "";
+  const estadoFormulario = () => JSON.stringify([
+    ...CAMPOS_TEXTO.map(k => $("ar-" + k).value), ...CAMPOS_SI_NO.map(k => $("ar-" + k).checked),
+    $("ar-colores").querySelectorAll("input:checked").length, $("ar-nc-codigo").value, $("ar-nc-nombre").value,
+  ]);
+
+  // Clic afuera del diálogo (en el fondo oscuro) lo cierra; si hay cambios sin guardar, pregunta antes.
+  // Se exige que el clic empiece y termine afuera: arrastrar para elegir texto y soltar afuera no lo cierra.
+  function iniciarCierreAfuera() {
+    const dlg = $("dlg-articulo");
+    const afuera = e => { const r = dlg.getBoundingClientRect(); return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom; };
+    let empezoAfuera = false;
+    dlg.addEventListener("pointerdown", e => { empezoAfuera = e.target === dlg && afuera(e); });
+    dlg.addEventListener("click", e => {
+      if (!empezoAfuera || e.target !== dlg || !afuera(e)) return;
+      empezoAfuera = false;
+      if (estadoFormulario() !== fotoFormulario && !confirm("Hay cambios sin guardar en este artículo. ¿Cerrar igual?")) return;
+      dlg.close();
+    });
   }
 
   // ---------- Variantes por color ----------
@@ -850,10 +905,13 @@
     CAMPOS_SI_NO.forEach(k => { d[k] = $("ar-" + k).checked; });
     $("articulo-guardar").disabled = true;
     try {
-      await R.api.articulos.actualizar(editando.codigo, d);
+      const codigo = editando.codigo, guardado = await R.api.articulos.actualizar(codigo, d);
       $("dlg-articulo").close();
       toast("Artículo actualizado.");
-      await mostrar();
+      // Se cambia en el lugar, sin volver a filtrar: si deja de coincidir con el filtro queda a la vista, atenuada
+      Object.entries(d).forEach(([k, v]) => aplicarLocal([codigo], k, typeof v === "string" ? (v.trim() === "" && /fecha/.test(k) ? null : v.trim()) : v));
+      if (guardado) aplicarLocal([codigo], "fecha_alta_web", guardado.fecha_alta_web);
+      refrescarCeldas([codigo], [...Object.keys(d), "web_estado"]);
     } catch (err) { toast(err.message, "error", 6000); }
     finally { $("articulo-guardar").disabled = false; }
   }
@@ -884,6 +942,7 @@
     $("columnas-orden").addEventListener("click", () => { ordenCols = []; guardarVista(); $("dlg-columnas").close(); pintar(); toast("Columnas en el orden original."); });
     $("columnas-todas").addEventListener("click", () => $("columnas-lista").querySelectorAll("input").forEach(i => { i.checked = true; }));
     $("form-articulo").addEventListener("submit", guardarArticulo);
+    iniciarCierreAfuera();
     $("ar-crear-variantes").addEventListener("click", crearVariantes);
     $("ar-nc-agregar").addEventListener("click", colorNuevo);
     $("planilla-completa").addEventListener("click", () => pantallaCompleta());
@@ -897,6 +956,8 @@
     $("seleccion-marcar").addEventListener("click", () => marcarElegidos(true));
     $("seleccion-desmarcar").addEventListener("click", () => marcarElegidos(false));
     $("seleccion-limpiar").addEventListener("click", () => { seleccion.clear(); ultimoClic = null; pintarSeleccion(); });
+    $("planilla-editar").addEventListener("click", editarElegido);
+    $("fuera-actualizar").addEventListener("click", pintar);
 
     // Ventanita de descripción
     $("pop-desc-guardar").addEventListener("click", () => guardarPop(false));
@@ -970,9 +1031,11 @@
       // Clic en la celda de una casilla (no justo en el cuadradito): la tilda igual
       const celda = e.target.closest("td.celda-tilde");
       if (celda) { const c = celda.querySelector("input.tilde"); if (!c) return; c.checked = !c.checked; return tildar(c); }
-      if (e.target.closest("td.col-sel")) { const c = e.target.closest("td").querySelector("input.sel"); c.checked = !c.checked; return elegir(c, e.shiftKey); }
+      // Clic en el código, el nombre o cualquier otra parte de la fila: la elige (o la saca), igual que la
+      // primera columna. Los datos completos se abren con "Editar producto", arriba.
       const tr = e.target.closest("tr[data-i]");
-      if (tr) abrirArticulo(mostradas()[Number(tr.dataset.i)]);
+      const c = tr && tr.querySelector("input.sel");
+      if (c) { c.checked = !c.checked; elegir(c, e.shiftKey); }
     });
   }
 

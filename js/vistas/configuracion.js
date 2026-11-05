@@ -34,6 +34,24 @@
     pintar();
   }
 
+  // Últimos backups (solo admin)
+  async function pintarBackups() {
+    const caja = $("cfg-backups");
+    if (!R.app.esAdmin()) { caja.hidden = true; return; }
+    caja.hidden = false;
+    const { esc, fmtNum } = R.util;
+    const cuando = iso => new Date(iso).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    try {
+      const filas = await R.api.backups.ultimos(10);
+      $("cfg-backups-tabla").innerHTML = `<thead><tr><th>Fecha</th><th>Resultado</th><th>Archivo</th><th class="num">Tamaño</th></tr></thead><tbody>${filas.length
+        ? filas.map(b => `<tr><td>${esc(cuando(b.creado_en))}${b.origen === "manual" ? ' <span class="tag-var">manual</span>' : ""}</td>
+            <td>${b.estado === "ok" ? '<span class="estado completa">Hecho</span>' : `<span class="estado cancelada">Con error</span> <small>${esc(b.error)}</small>`}</td>
+            <td>${b.drive_url ? `<a href="${esc(b.drive_url)}" target="_blank" rel="noopener">${esc(b.archivo)}</a>` : esc(b.archivo)}</td>
+            <td class="num">${b.bytes ? fmtNum(Math.round(b.bytes / 1024)) + " KB" : ""}</td></tr>`).join("")
+        : `<tr><td colspan="4" class="vacio">Todavía no se hizo ningún backup.</td></tr>`}</tbody>`;
+    } catch (e) { $("cfg-backups-tabla").innerHTML = `<tbody><tr><td>${esc(e.message)}</td></tr></tbody>`; }
+  }
+
   function iniciar() {
     $("cfg-sugeridos").addEventListener("click", e => {
       const b = e.target.closest("[data-color]");
@@ -44,5 +62,5 @@
     $("cfg-original").addEventListener("click", () => { poner(C().DEFECTO); toast("Volvió el verde pastel de siempre."); });
   }
 
-  R.vistaConfiguracion = { iniciar, mostrar: pintar };
+  R.vistaConfiguracion = { iniciar, mostrar: () => { pintar(); pintarBackups(); } };
 })(window.COMPRAS);

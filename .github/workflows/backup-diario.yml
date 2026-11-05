@@ -1,0 +1,39 @@
+# Backup diario de Compras · Cindy a Google Drive.
+# 13:00 de Argentina = 16:00 UTC (Argentina no usa horario de verano).
+# GitHub puede demorar unos minutos en arrancar las tareas programadas.
+# Los secretos se cargan en el repo: Settings > Secrets and variables > Actions (ver GUIA-BACKUP.md).
+name: Backup diario
+
+on:
+  schedule:
+    - cron: "0 16 * * *"
+  workflow_dispatch: # botón "Run workflow" para hacer uno ahora
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-diario
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Instalar ExcelJS
+        run: npm install --no-save --no-package-lock --ignore-scripts exceljs@4.4.0
+      - name: Hacer el backup
+        env:
+          BACKUP_URL: ${{ secrets.BACKUP_URL }}
+          BACKUP_TOKEN: ${{ secrets.BACKUP_TOKEN }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          BACKUP_DIAS: "30"
+          BACKUP_ORIGEN: ${{ github.event_name == 'workflow_dispatch' && 'manual' || 'programado' }}
+        run: node backup/hacer-backup.mjs
