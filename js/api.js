@@ -287,7 +287,7 @@
           const res = JSON.parse(datos);
           resultados.push(res);
           // La función ya guardó el resultado en la base: se refleja en la planilla guardada
-          if (res.estado !== "error") for (const k of ["planilla", "sin_orden"]) parchar(k, fs => fs.forEach(f => { if (f.codigo === res.codigo) Object.assign(f, { web_estado: res.estado, web_url: res.url, web_nombre: res.nombre, web_revisado_en: new Date().toISOString() }); }));
+          if (res.estado !== "error") for (const k of ["planilla", "sin_orden"]) parchar(k, fs => fs.forEach(f => { if (f.codigo === res.codigo) Object.assign(f, { web_estado: res.estado, web_url: res.url, web_nombre: res.nombre, web_revisado_en: new Date().toISOString() }, res.descripcion_guardada ? { descripcion_web: res.descripcion } : {}); }));
           if (alResultado) alResultado(res);
         }
       }

@@ -563,3 +563,57 @@ test('pendientes: los artículos sin orden ni remito no cuentan (ni en pendiente
   await db.exec("insert into public.articulos (codigo, descripcion, descripcion_web) values ('PE-SUELTO1', 'Suelto 1', 'Texto'), ('PE-SUELTO2', 'Suelto 2', '')");
   assert.deepEqual(await foto(), antes);
 });
+
+test('restaurar desde el Excel del backup: vuelve todo lo borrado, sin duplicar, y el reinicio de números anda', async () => {
+  const ExcelJS = (await import('exceljs')).default;
+  const { armarLibro } = await import('../backup/armar-xlsx.mjs');
+  const { leerLibro, planDeRestauracion, lotes, TABLAS_RESTAURABLES, CLAVES } = await import('../backup/restaurar-lib.mjs');
+  const snap = async () => {
+    const o = {};
+    for (const t of TABLAS_RESTAURABLES) o[t] = (await db.query(`select coalesce(jsonb_agg(to_jsonb(x) order by x.${CLAVES[t]}), '[]'::jsonb) as r from public.${t} x`)).rows[0].r;
+    return o;
+  };
+  const antes = await snap();
+  for (const t of TABLAS_RESTAURABLES) assert.ok(antes[t].length > 0, `la prueba necesita datos en ${t}`);
+
+  // Backup -> Excel -> lectura (el mismo camino que el script)
+  const buffer = Buffer.from(await armarLibro(ExcelJS, { planilla: [], tablas: { ...antes, perfiles: [], preferencias: [] } }).xlsx.writeBuffer());
+  const libro = await leerLibro(ExcelJS, buffer);
+  assert.equal(libro.tablas.articulos.length, antes.articulos.length);
+
+  // Se pierde todo
+  await db.exec(`truncate public.recepciones, public.remito_lineas, public.remitos, public.oc_lineas, public.ordenes_compra, public.articulos, public.colores, public.proveedores restart identity cascade`);
+  assert.equal((await snap()).articulos.length, 0);
+
+  // Solo el backend (clave de servicio) puede restaurar
+  await assert.rejects(como(U.admin, `select public.restaurar_tabla('articulos', '[]'::jsonb)`), /permission denied/);
+  await assert.rejects(db.query(`select public.restaurar_tabla('perfiles', '[]'::jsonb)`), /no permitida/);
+
+  const cargar = async (plan) => {
+    const insertadas = {};
+    for (const p of plan) for (const lote of lotes(p.faltan, 100)) {
+      const r = (await db.query('select public.restaurar_tabla($1, $2::jsonb) as r', [p.tabla, JSON.stringify(lote)])).rows[0].r;
+      insertadas[p.tabla] = (insertadas[p.tabla] || 0) + r.insertadas;
+    }
+    return insertadas;
+  };
+  const vacias = Object.fromEntries(TABLAS_RESTAURABLES.map(t => [t, new Set()]));
+  const plan = planDeRestauracion(libro, vacias);
+  assert.ok(plan.every(p => p.huerfanas.length === 0), 'no debería haber filas huérfanas');
+  const insertadas = await cargar(plan);
+  for (const t of TABLAS_RESTAURABLES) assert.equal(insertadas[t], antes[t].length, `se cargaron todas las filas de ${t}`);
+
+  // Quedó igual que antes (mismos números, textos, fechas, cantidades)
+  assert.deepEqual(await snap(), antes);
+
+  // Repetir no duplica: nada falta y, si igual se manda, la base ignora lo que ya está
+  const existentes = Object.fromEntries(TABLAS_RESTAURABLES.map(t => [t, new Set(antes[t].map(f => String(f[CLAVES[t]])))]));
+  const plan2 = planDeRestauracion(libro, existentes);
+  assert.ok(plan2.every(p => p.faltan.length === 0));
+  const r2 = (await db.query('select public.restaurar_tabla($1, $2::jsonb) as r', ['proveedores', JSON.stringify(antes.proveedores)])).rows[0].r;
+  assert.deepEqual(r2, { enviadas: antes.proveedores.length, insertadas: 0 });
+
+  // Los números siguen desde el más alto: un proveedor nuevo no choca con los restaurados
+  const nuevo = (await db.query(`insert into public.proveedores (cuit, nombre) values ('30000000007', 'NUEVO TRAS RESTAURAR') returning id`)).rows[0].id;
+  assert.ok(Number(nuevo) > Math.max(...antes.proveedores.map(p => Number(p.id))));
+});

@@ -9,6 +9,7 @@
 //  POST con JSON:
 //    { accion: "pagina", tabla, desde }   -> { filas, hay_mas }  (hasta 1000 por pedido)
 //    { accion: "registrar", estado, archivo, drive_url, filas, bytes, error, origen }
+//    { accion: "restaurar", tabla, filas }  -> { enviadas, insertadas }  (agrega lo que falta; no pisa ni borra)
 // =====================================================================
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -77,6 +78,13 @@ Deno.serve(async (req) => {
       });
       if (error) throw error;
       return json({ ok: true });
+    }
+
+    // Restaurar desde el Excel del backup: agrega las filas que faltan de una tabla (ver restaurar_tabla)
+    if (body.accion === "restaurar") {
+      const { data, error } = await db.rpc("restaurar_tabla", { p_tabla: String(body.tabla ?? ""), p_filas: Array.isArray(body.filas) ? body.filas : [] });
+      if (error) throw error;
+      return json(data);
     }
 
     return json({ error: "Acción desconocida" }, 400);

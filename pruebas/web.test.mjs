@@ -4,7 +4,7 @@
 // Con PROBAR_TIENDA=1 además consulta la tienda real.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { leerResultados, clasificar, decodificar, revisarCodigo, urlsDeImagen, leerPrecio } from '../supabase/functions/buscar-en-web/index.ts';
+import { leerResultados, clasificar, decodificar, revisarCodigo, urlsDeImagen, leerPrecio, leerDescripcion } from '../supabase/functions/buscar-en-web/index.ts';
 
 const tarjeta = (codigo, nombre, url, img = '') => `<div class="col-xs-24 product-listing-item"><input type="hidden" value="1" name="products_id">
   <div class="product-box" itemscope itemtype="http://schema.org/Product"><meta itemprop="name" content="${nombre}" />
@@ -65,6 +65,46 @@ test('lee el precio de la tarjeta (puntos de miles, coma decimal)', () => {
 
 test('decodifica las entidades de la tienda', () => {
   assert.equal(decodificar('C&oacute;digo &amp; Ni&ntilde;os &#176;'), 'Código & Niños °');
+});
+
+const ficha = (interior) => `<div class="descriptionProd"><div class="tituloDetalleDescrip">Descripci&oacute;n del producto</div>
+  <div class="descripDetalle" style="overflow: unset"><div class="descripcionProducto" id="descProd" id="wc-power-page">
+  ${interior}
+  </div></div></div><script>var x = "<div>";</script>`;
+
+test('descripción de la ficha: viñetas con <br> (como las que cargan ellos)', () => {
+  assert.equal(leerDescripcion(ficha('<style type="text/css"><!--td {border: 1px solid #ccc;}-->\n</style>\n&bull; Marca y Modelo: Tascani, Neceser.<br />\n&bull; Medidas: 23 x 13 x 8,5 cm.   ')),
+    '• Marca y Modelo: Tascani, Neceser.\n• Medidas: 23 x 13 x 8,5 cm.');
+});
+
+test('descripción de la ficha: título y valor en la línea siguiente van juntos; entidades decodificadas', () => {
+  assert.equal(leerDescripcion(ficha('MEDIDAS:<br />\n34&nbsp;cm de alto x&nbsp;44&nbsp;cm de ancho x&nbsp;15&nbsp;cm de profundidad       ')),
+    '• MEDIDAS: 34 cm de alto x 44 cm de ancho x 15 cm de profundidad');
+});
+
+test('descripción de la ficha: párrafos', () => {
+  assert.equal(leerDescripcion(ficha('<p>Medidas: 22,5 &times; 31 &times; 9 cm.</p>\n\n<p>Materiales: Exterior: 100% PVC.</p>')),
+    '• Medidas: 22,5 × 31 × 9 cm.\n• Materiales: Exterior: 100% PVC.');
+});
+
+test('descripción de la ficha: listas con comentarios y atributos raros', () => {
+  assert.equal(leerDescripcion(ficha('&nbsp;Incluye un rollo de papel pre-impreso con ilustraciones de tem&aacute;tica "Roar".<!--TgQPHd||[]--><!--TgQPHd||[]-->\n<ul>\n\t<li data-copy-service-computed-style="font-family: " google="" sans="">El set viene acompa&ntilde;ado de 6 marcadores.<!--TgQPHd||[]--></li>\n</ul>\n<ul><li>El rollo mide 30 cm de ancho.</li></ul>')),
+    '• Incluye un rollo de papel pre-impreso con ilustraciones de temática "Roar".\n• El set viene acompañado de 6 marcadores.\n• El rollo mide 30 cm de ancho.');
+});
+
+test('descripción de la ficha: tabla Etiqueta (negrita) / Valor', () => {
+  const tabla = '<table><tbody><tr><td><strong>Color</strong></td></tr><tr><td>Gris/Azul</td></tr><tr><td><STRONG>Capacidad (Litros)</STRONG></td></tr><tr><td>35</td></tr></tbody></table>';
+  assert.equal(leerDescripcion(ficha(tabla)), '• Color: Gris/Azul\n• Capacidad (Litros): 35');
+});
+
+test('descripción de la ficha: vacía o sin bloque → texto vacío', () => {
+  assert.equal(leerDescripcion(ficha('   \n  ')), '');
+  assert.equal(leerDescripcion('<html><body>sin descripción</body></html>'), '');
+  assert.equal(leerDescripcion(ficha('<style>td{}</style>')), '');
+});
+
+test('descripción: no inventa viñetas dobles si ya vienen con "•" o "-"', () => {
+  assert.equal(leerDescripcion(ficha('• Uno<br/>- Dos<br/>* Tres')), '• Uno\n• Dos\n• Tres');
 });
 
 test('tienda real (solo con PROBAR_TIENDA=1)', { skip: !process.env.PROBAR_TIENDA && 'sin PROBAR_TIENDA' }, async () => {

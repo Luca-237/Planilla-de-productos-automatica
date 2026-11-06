@@ -25,41 +25,7 @@ import { armarLibro, nombreArchivo, resumenFilas, TABLAS } from "./armar-xlsx.mj
 
 const NOMBRE_CARPETA = "Backups Compras Cindy";
 const MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-// --env: variables desde un archivo local (así los secretos no van en el comando ni en el repo)
-{
-  const i = process.argv.indexOf("--env");
-  if (i > 0 && process.argv[i + 1]) {
-    for (const l of fs.readFileSync(process.argv[i + 1], "utf8").split(/\r?\n/)) {
-      const m = l.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/);
-      if (m && !l.trim().startsWith("#") && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
-    }
-  }
-}
-const env = k => process.env[k] || "";
-const exigir = k => { if (!env(k)) throw new Error(`Falta la variable ${k}`); return env(k); };
-
-async function pedirFuncion(cuerpo) {
-  const r = await fetch(exigir("BACKUP_URL"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-backup-token": exigir("BACKUP_TOKEN") },
-    body: JSON.stringify(cuerpo),
-  });
-  const t = await r.text();
-  let d; try { d = JSON.parse(t); } catch { d = null; }
-  if (!r.ok) throw new Error(`La función respondió ${r.status}: ${(d && d.error) || t.slice(0, 200)}`);
-  return d;
-}
-
-async function traerTabla(tabla) {
-  const filas = [];
-  for (let desde = 0; ; ) {
-    const { filas: pag, hay_mas } = await pedirFuncion({ accion: "pagina", tabla, desde });
-    filas.push(...pag);
-    if (!hay_mas) break;
-    desde += pag.length;
-  }
-  return filas;
-}
+import { env, exigir, pedirFuncion, traerTabla } from "./comun.mjs";
 
 async function traerDatos() {
   const datos = { planilla: await traerTabla("planilla"), tablas: {} };

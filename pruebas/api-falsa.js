@@ -321,6 +321,12 @@
             r = { codigo, estado, url: estado === "no_esta" ? "" : "https://www.cindymayorista.com.ar/demo/" + codigo.toLowerCase() + ".html", nombre: estado === "no_esta" ? "" : (a ? a.descripcion : codigo),
                   precio: estado === "no_esta" ? null : (codigo === "EJ-501" ? null : 1200 + (codigo.charCodeAt(codigo.length - 1) % 10) * 50) }; // EJ-501: la página no muestra precio
             if (a) Object.assign(a, { web_estado: r.estado, web_url: r.url, web_nombre: r.nombre, web_revisado_en: new Date().toISOString() });
+            // DEMO103: la ficha trae descripción; se guarda solo si el artículo no tenía una (como la real)
+            if (codigo === "DEMO103" && a) {
+              r.descripcion = "• Marca y Modelo: Demo, Mochila.\n• Medidas: 30 x 20 x 10 cm.";
+              r.descripcion_guardada = !String(a.descripcion_web || "").trim();
+              if (r.descripcion_guardada) a.descripcion_web = r.descripcion;
+            }
           }
           // para el catálogo: una "foto" de ejemplo (un SVG con el código)
           if (imagenes && r.estado !== "no_esta" && r.estado !== "error") {

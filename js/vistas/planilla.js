@@ -680,7 +680,14 @@
       const [r] = await R.api.web.revisar([f.codigo]);
       if (r.estado === "error") throw new Error(r.error);
       aplicarWeb([r]);
-      refrescarCeldas([f.codigo], ["web_estado"]);
+      refrescarCeldas([f.codigo], colsWeb(r));
+      // Ventanita abierta sobre este artículo y sin nada escrito: se muestra la descripción traída
+      const abierta = popIndice != null && mostradas()[popIndice];
+      if (r.descripcion_guardada && abierta && abierta.codigo === f.codigo && !$("pop-desc-texto").value.trim()) {
+        popTextoOriginal = r.descripcion;
+        $("pop-desc-texto").value = r.descripcion;
+        toast("Se trajo la descripción de la web: revisala y guardá.", "ok", 5000);
+      }
     } catch (e) { toast(`No se pudo revisar en la web: ${e.message}`, "error", 6000); }
     // La ventanita puede seguir abierta sobre otra fila: solo se actualiza si es la misma
     const actual = popIndice != null && mostradas()[popIndice];
@@ -699,8 +706,12 @@
       aplicarLocal([r.codigo], "web_url", r.url);
       aplicarLocal([r.codigo], "web_nombre", r.nombre);
       aplicarLocal([r.codigo], "web_revisado_en", ahora);
+      // La función trajo la descripción de la ficha y la guardó (solo si el artículo no tenía una)
+      if (r.descripcion_guardada) aplicarLocal([r.codigo], "descripcion_web", r.descripcion);
     });
   }
+  // Columnas a redibujar tras una revisión
+  const colsWeb = r => (r.descripcion_guardada ? ["web_estado", "descripcion_web"] : ["web_estado"]);
 
   // ---------- Revisar en la web (varios) ----------
   // Los elegidos; si no hay elegidos, todos los que se ven con los filtros. Los resultados llegan
@@ -724,7 +735,7 @@
     boton.classList.add("detener");
     boton.title = "Detener la revisión (lo ya revisado queda guardado)";
     const cuenta = { publicado: 0, solo_variantes: 0, no_esta: 0, error: 0 };
-    let hechos = 0;
+    let hechos = 0, descripciones = 0;
     const total = codigos.length, lotes = Math.ceil(total / lote);
     const caja = $("planilla-progreso"), pista = $("progreso-pista"), barra = $("progreso-barra");
     caja.hidden = false; caja.classList.remove("termino");
@@ -746,7 +757,8 @@
           alResultado: r => {
             hechos++;
             cuenta[r.estado] = (cuenta[r.estado] || 0) + 1;
-            if (r.estado !== "error") { aplicarWeb([r]); refrescarCeldas([r.codigo], ["web_estado"]); }
+            if (r.descripcion_guardada) descripciones++;
+            if (r.estado !== "error") { aplicarWeb([r]); refrescarCeldas([r.codigo], colsWeb(r)); }
             avance();
           },
         });
@@ -771,6 +783,7 @@
     }
     if (!hechos) return;
     const partes = [`${fmtNum(cuenta.publicado)} en la web`, `${fmtNum(cuenta.solo_variantes)} por variantes`, `${fmtNum(cuenta.no_esta)} no están`];
+    if (descripciones) partes.push(`${fmtNum(descripciones)} descripciones traídas de la web (sin marcar "Descripción OK")`);
     if (cuenta.error) partes.push(`${fmtNum(cuenta.error)} sin respuesta de la tienda (quedan como estaban)`);
     const cortada = hechos < codigos.length ? `Revisión detenida: ${fmtNum(hechos)} de ${fmtNum(codigos.length)}` : `Revisados ${fmtNum(hechos)}`;
     toast(`${cortada}: ${partes.join(", ")}.`, cuenta.error ? "error" : "ok", 8000);

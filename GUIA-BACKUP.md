@@ -62,10 +62,19 @@ En vez de GitHub Actions + OAuth de Google, el mismo script puede correr desde u
 - `invalid_grant`: el permiso de Google venció o se revocó. Repetir el paso 2.4 y actualizar `GOOGLE_REFRESH_TOKEN`.
 - `Token inválido`: `BACKUP_TOKEN` distinto entre Supabase y GitHub.
 
-## Recuperar
-1. Descargar el Excel del día que corresponda desde Drive.
-2. Crear el proyecto de Supabase (o limpiar el actual) y correr las migraciones de `supabase/migrations` en orden.
-3. Cargar las hojas con nombre de tabla en el orden en que están listadas arriba (cada hoja es la tabla tal cual; en el SQL Editor se puede importar cada una como CSV desde el panel Table Editor).
-4. Volver a crear los usuarios desde Usuarios.
+## Recuperar desde el Excel (script de restauración)
 
-> La recuperación completa no se probó todavía contra una base vacía: conviene hacer un simulacro una vez que el backup funcione.
+`backup/restaurar-backup.mjs` lee el Excel del backup y carga en la base lo que falte: proveedores, colores, artículos, órdenes de compra y sus líneas, remitos y sus líneas, y las asignaciones de remitos a órdenes, con sus números originales.
+
+- **Es seguro:** solo agrega lo que falta; no borra ni pisa nada de lo que ya existe, y se puede repetir sin duplicar. Sin `--aplicar` solo simula.
+- **No restaura usuarios ni sus preferencias** (viven en Supabase Auth): se vuelven a crear desde la pantalla Usuarios. Si una fila apunta a un usuario que ya no existe, queda sin usuario.
+- **Requisito (una sola vez):** aplicar la migración `20261106100000_restaurar_backup.sql` y volver a desplegar la función `backup-datos` (tiene una acción nueva, `restaurar`).
+
+Pasos, dentro de la carpeta del proyecto:
+
+1. Simular: `node backup/restaurar-backup.mjs "G:\Mi unidad\Backups\backup-compras-cindy-AAAA-MM-DD.xlsx" --env "C:\Users\Usuario\.claude\backup-compras.env"`. Muestra, por tabla, cuántas filas hay en el Excel, cuántas ya están en la base y cuántas faltan.
+2. Si lo que falta es lo que esperabas, repetir el mismo comando agregando `--aplicar`.
+3. Para una base nueva y vacía: crear el proyecto, correr las migraciones de `supabase/migrations` en orden, desplegar las funciones, crear el secreto `BACKUP_TOKEN` y el usuario admin desde el panel, y restaurar con `--aplicar`.
+4. `--tablas articulos,oc_lineas` restaura solo esas tablas (cuidado: una fila no se carga si lo que referencia no existe).
+
+Probado: en una base de prueba se borraron todas las tablas y se restauraron desde un Excel generado por el backup, y quedaron idénticas. Falta el simulacro contra un proyecto de Supabase real vacío.

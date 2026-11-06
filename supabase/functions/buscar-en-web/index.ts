@@ -8,6 +8,9 @@
 //  POST { codigos: ["855338", "3M201", ...] }  (hasta 100 por pedido)
 //  Solo para usuarios activos con rol admin o carga.
 //  Cada resultado trae también el precio que muestra la tienda (precio, o null si no muestra).
+//  Si el producto está publicado, lee además la descripción de su ficha y, solo si el artículo no tiene
+//  descripción_web, la guarda (nunca pisa una existente; no marca "Descripción OK"). Devuelve
+//  descripcion y descripcion_guardada (true si la escribió).
 //  Con "imagenes": true además baja la foto de cada producto publicado (hasta 12 códigos por pedido)
 //  y la devuelve en base64: el navegador no puede leer las fotos de la tienda (no permite otros sitios).
 //  Con "Accept: text/event-stream" responde por SSE: un evento por código
@@ -38,6 +41,8 @@ const ENTIDADES: Record<string, string> = {
   amp: "&", quot: '"', apos: "'", lt: "<", gt: ">", nbsp: " ",
   aacute: "á", eacute: "é", iacute: "í", oacute: "ó", uacute: "ú", ntilde: "ñ", uuml: "ü",
   Aacute: "Á", Eacute: "É", Iacute: "Í", Oacute: "Ó", Uacute: "Ú", Ntilde: "Ñ", Uuml: "Ü", deg: "°",
+  bull: "•", times: "×", middot: "·", ndash: "–", mdash: "—", hellip: "…", ordm: "º", ordf: "ª", iexcl: "¡", iquest: "¿",
+  lsquo: "‘", rsquo: "’", ldquo: "“", rdquo: "”", laquo: "«", raquo: "»", egrave: "è", agrave: "à", ccedil: "ç", euro: "€",
 };
 export function decodificar(texto: string): string {
   return texto
@@ -70,6 +75,56 @@ export function leerResultados(html: string): Producto[] {
       precio: leerPrecio(texto),
     };
   }).filter((x) => x.codigo);
+}
+
+// ---------- Descripción de la ficha del producto ----------
+// La ficha trae la descripción en <div class="descripcionProducto" id="descProd">…</div>, con HTML libre:
+// "&bull; texto<br />", <p>, <ul><li> o tablas Etiqueta/Valor pegadas de una planilla de proveedor.
+// Se deja como las que cargan ellos: una línea por dato, cada una con "• ".
+const MAX_DESCRIPCION = 4000;
+const textoPlano = (h: string) => decodificar(h.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+
+export function leerDescripcion(html: string): string {
+  const i = html.indexOf('id="descProd"');
+  if (i < 0) return "";
+  const ini = html.indexOf(">", i) + 1;
+  // el cierre es el </div> que equilibra los <div> de adentro
+  const re = /<(\/?)div\b[^>]*>/gi;
+  re.lastIndex = ini;
+  let prof = 1, fin = -1, m: RegExpExecArray | null;
+  while ((m = re.exec(html))) { prof += m[1] ? -1 : 1; if (prof === 0) { fin = m.index; break; } }
+  if (fin < 0) return "";
+  let t = html.slice(ini, fin).replace(/<!--[\s\S]*?-->/g, "").replace(/<(style|script)\b[\s\S]*?<\/\1>/gi, "");
+  // Tablas Etiqueta (en negrita) / Valor -> "Etiqueta: valor"
+  let etiqueta = "";
+  t = t.replace(/<td\b[^>]*>([\s\S]*?)<\/td>/gi, (_, celda: string) => {
+    const txt = textoPlano(celda);
+    if (/<(strong|b)\b/i.test(celda)) { etiqueta = txt; return ""; }
+    const salida = txt ? "\n" + (etiqueta ? etiqueta + ": " : "") + txt + "\n" : "";
+    etiqueta = "";
+    return salida;
+  });
+  t = t.replace(/<\s*br\s*\/?>|<\/(p|li|ul|ol|tr|div|h[1-6])>|<li\b[^>]*>/gi, "\n");
+  const lineas = decodificar(t.replace(/<[^>]+>/g, " ")).split("\n")
+    .map((l) => l.replace(/\s+/g, " ").trim().replace(/^[•·\-*]\s*/, "").trim()).filter(Boolean);
+  // "MEDIDAS:" y la línea siguiente van juntas
+  const juntas: string[] = [];
+  for (const l of lineas) {
+    if (juntas.length && /:$/.test(juntas[juntas.length - 1])) juntas[juntas.length - 1] += " " + l; else juntas.push(l);
+  }
+  return juntas.map((l) => "• " + l).join("\n").slice(0, MAX_DESCRIPCION);
+}
+
+export async function bajarDescripcion(url: string, base: string): Promise<string> {
+  // Solo fichas de la propia tienda
+  if (!url.startsWith(base + "/")) return "";
+  const ctrl = new AbortController();
+  const corte = setTimeout(() => ctrl.abort(), ESPERA_MAX_MS);
+  try {
+    const r = await fetch(url, { signal: ctrl.signal, headers: { "User-Agent": "Cindy-Compras/1.0 (revision de catalogo)" } });
+    if (!r.ok) return "";
+    return leerDescripcion(new TextDecoder("iso-8859-1").decode(await r.arrayBuffer()));
+  } catch (_) { return ""; } finally { clearTimeout(corte); }
 }
 
 export type Resultado = { codigo: string; estado: "publicado" | "solo_variantes" | "no_esta"; url: string; nombre: string; imagen: string; precio: number | null };
@@ -180,9 +235,20 @@ if (D && D.serve) {
             web_estado: r.estado, web_revisado_en: new Date().toISOString(), web_url: r.url, web_nombre: r.nombre,
           }).eq("codigo", codigo);
           if (error) throw error;
+          // Descripción: se toma de la ficha del producto y solo se guarda si el artículo todavía no tiene una
+          // (nunca pisa lo escrito en el programa). Si falla, la revisión igual vale.
+          let extra: { descripcion?: string; descripcion_guardada?: boolean } = {};
+          if (r.estado === "publicado" && r.url) {
+            const desc = await bajarDescripcion(r.url, tienda);
+            if (desc) {
+              const { data, error: errDesc } = await admin.from("articulos").update({ descripcion_web: desc })
+                .eq("codigo", codigo).eq("descripcion_web", "").select("codigo");
+              extra = { descripcion: desc, descripcion_guardada: !errDesc && !!data && data.length > 0 };
+            }
+          }
           // Para el catálogo: la foto del producto (la lectura de la tienda ya la trae)
-          if (conImagenes && r.estado !== "no_esta") return { ...r, foto: await bajarImagen(r.imagen, tienda) };
-          return r;
+          if (conImagenes && r.estado !== "no_esta") return { ...r, ...extra, foto: await bajarImagen(r.imagen, tienda) };
+          return { ...r, ...extra };
         } catch (e) {
           // Si la tienda no responde no se guarda nada: vale el resultado anterior
           return { codigo, estado: "error", url: "", nombre: "", imagen: "", precio: null, error: e instanceof Error ? e.message : String(e) };
