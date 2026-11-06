@@ -552,3 +552,14 @@ test('artículos sin orden: la vista lista los que no tienen orden (ni su princi
   assert.deepEqual((await sin(U.carga)).map(f => f.codigo), ['SO1', 'SO1-X']);
   await assert.rejects(como(null, 'select * from public.v_articulos_sin_orden'), /permission denied/);
 });
+
+test('pendientes: los artículos sin orden ni remito no cuentan (ni en pendientes ni en sobrantes)', async () => {
+  await cargarOC(oc('0001-00000090', '2026-10-01', [['PE1', 5]]));
+  const foto = async () => ({
+    pendientes: await como(U.consulta, "select count(*)::int as lineas, coalesce(sum(pendiente), 0)::float8 as unidades, count(distinct orden)::int as ordenes from public.v_pendientes"),
+    sobrantes: await como(U.consulta, 'select count(*)::int as n from public.v_sobrantes'),
+  });
+  const antes = await foto();
+  await db.exec("insert into public.articulos (codigo, descripcion, descripcion_web) values ('PE-SUELTO1', 'Suelto 1', 'Texto'), ('PE-SUELTO2', 'Suelto 2', '')");
+  assert.deepEqual(await foto(), antes);
+});

@@ -268,7 +268,7 @@
   //   - campos de artículo que cambiaron (solo esos: lo demás, que pudo editarse en el sistema, no se toca);
   //   - de las órdenes que ya estaban: líneas nuevas, precios, lo que llegó y las líneas que ya no van.
   const CAMPOS_ARTICULO = ['descripcion', 'proveedor', 'tipo', 'padre', 'color', 'variantes', 'foto', 'descripcion_ok', 'cargado_web',
-    'catalogo', 'sin_stock', 'ya_no_esta', 'fecha_alta_web', 'observaciones', 'titulo_web', 'descripcion_web', 'estado_descripcion'];
+    'catalogo', 'ya_no_esta', 'fecha_alta_web', 'observaciones', 'titulo_web', 'descripcion_web', 'estado_descripcion'];
   const igual = (x, y) => JSON.stringify(x ?? null) === JSON.stringify(y ?? null);
 
   function planActualizacion(anterior, nueva) {

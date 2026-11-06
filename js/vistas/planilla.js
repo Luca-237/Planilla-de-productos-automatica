@@ -17,7 +17,7 @@
   // "Llegó" queda marcado solo cuando entra mercadería y no se desmarca nunca solo: si el artículo estuvo
   // en la web y después deja de estar, sigue marcado y así se nota que lo tuvimos y nos quedamos sin stock.
   const TILDES = {
-    llego: "Llegó", foto: "Foto", descripcion_ok: "Descripción OK", sin_stock: "Sin stock",
+    llego: "Llegó", foto: "Foto", descripcion_ok: "Descripción OK",
     cargado_web: "Cargado web", catalogo: "Catálogo", ya_no_esta: "Ya no está en la página",
   };
   const editable = () => app().puedeCargar();
@@ -145,15 +145,15 @@
   function criterioFiltros() {
     const q = norm($("planilla-buscar").value), prov = $("planilla-proveedor").value, est = $("planilla-estado").value;
     const falta = $("planilla-falta").value;
-    // "sin_stock" y "ya_no_esta" muestran los marcados; el resto, los que faltan
+    // "ya_no_esta" muestra los marcados; el resto, los que faltan
     const pasa = f => {
       if (!falta) return true;
-      // Como el filtro "SUBIR PAGINA" de la planilla anterior: mercadería que llegó, todavía no cargada en la web y con stock
-      if (falta === "subir_web") return f.llego && !f.cargado_web && !f.sin_stock;
+      // Como el filtro "SUBIR PAGINA" de la planilla anterior: mercadería que llegó, todavía no cargada en la web
+      if (falta === "subir_web") return f.llego && !f.cargado_web;
       if (falta === "web_sin") return !f.web_estado;
       if (falta === "web_si") return ["publicado", "solo_variantes"].includes(f.web_estado);
       if (falta === "web_no") return f.web_estado === "no_esta";
-      return ["sin_stock", "ya_no_esta"].includes(falta) ? !!f[falta] : !f[falta];
+      return falta === "ya_no_esta" ? !!f[falta] : !f[falta];
     };
     return f => (!prov || f.proveedor === prov) && (!est || f.estado === est) && pasa(f)
       && (!q || norm(`${f.codigo} ${f.nombre} ${f.orden} ${f.proveedor} ${f.razon_social || ""}`).includes(q));
