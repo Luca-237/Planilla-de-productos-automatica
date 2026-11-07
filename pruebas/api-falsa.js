@@ -323,6 +323,7 @@
             if (a) Object.assign(a, { web_estado: r.estado, web_url: r.url, web_nombre: r.nombre, web_revisado_en: new Date().toISOString() });
             // DEMO103: la ficha trae descripción; se guarda solo si el artículo no tenía una (como la real)
             if (codigo === "DEMO103" && a) {
+              if (!a.foto) { a.foto = true; r.foto_marcada = true; }
               r.descripcion = "• Marca y Modelo: Demo, Mochila.\n• Medidas: 30 x 20 x 10 cm.";
               r.descripcion_guardada = !String(a.descripcion_web || "").trim();
               if (r.descripcion_guardada) a.descripcion_web = r.descripcion;

@@ -4,7 +4,7 @@
 // Con PROBAR_TIENDA=1 además consulta la tienda real.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { leerResultados, clasificar, decodificar, revisarCodigo, urlsDeImagen, leerPrecio, leerDescripcion } from '../supabase/functions/buscar-en-web/index.ts';
+import { leerResultados, clasificar, decodificar, revisarCodigo, urlsDeImagen, leerPrecio, leerDescripcion, tieneFotoReal } from '../supabase/functions/buscar-en-web/index.ts';
 
 const tarjeta = (codigo, nombre, url, img = '') => `<div class="col-xs-24 product-listing-item"><input type="hidden" value="1" name="products_id">
   <div class="product-box" itemscope itemtype="http://schema.org/Product"><meta itemprop="name" content="${nombre}" />
@@ -105,6 +105,14 @@ test('descripción de la ficha: vacía o sin bloque → texto vacío', () => {
 
 test('descripción: no inventa viñetas dobles si ya vienen con "•" o "-"', () => {
   assert.equal(leerDescripcion(ficha('• Uno<br/>- Dos<br/>* Tres')), '• Uno\n• Dos\n• Tres');
+});
+
+test('foto real: solo cuenta la imagen subida de producto, no un relleno ni un vacío', () => {
+  assert.equal(tieneFotoReal('mods/html/fil/Model/Product/64279/thumb_03_855338-1-1.jpg.webp'), true);
+  assert.equal(tieneFotoReal('https://www.cindymayorista.com.ar/mods/html/fil/Model/Product/64279/855338-1-1.jpg'), true);
+  assert.equal(tieneFotoReal(''), false);
+  assert.equal(tieneFotoReal('images/sin-imagen.png'), false);
+  assert.equal(tieneFotoReal('mods/html/fil/Model/Product/sin-foto.png'), false);
 });
 
 test('tienda real (solo con PROBAR_TIENDA=1)', { skip: !process.env.PROBAR_TIENDA && 'sin PROBAR_TIENDA' }, async () => {

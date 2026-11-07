@@ -11,6 +11,8 @@
 //  Si el producto está publicado, lee además la descripción de su ficha y, solo si el artículo no tiene
 //  descripción_web, la guarda (nunca pisa una existente; no marca "Descripción OK"). Devuelve
 //  descripcion y descripcion_guardada (true si la escribió).
+//  Si la ficha publicada trae foto real, marca la casilla "foto" del artículo (foto_marcada: true) para no
+//  volver a comprobar si tiene imagen; solo agrega, nunca desmarca.
 //  Con "imagenes": true además baja la foto de cada producto publicado (hasta 12 códigos por pedido)
 //  y la devuelve en base64: el navegador no puede leer las fotos de la tienda (no permite otros sitios).
 //  Con "Accept: text/event-stream" responde por SSE: un evento por código
@@ -153,6 +155,12 @@ export async function revisarCodigo(codigo: string, base: string): Promise<Resul
   } finally { clearTimeout(corte); }
 }
 
+// ¿La tarjeta trae una foto subida de verdad? Las fotos de producto viven en mods/html/fil/Model/Product/<id>/…;
+// cualquier otra cosa (imagen de relleno, vacío) no cuenta.
+export function tieneFotoReal(imagen: string): boolean {
+  return /(^|\/)Model\/Product\/\d+\/[^\/]+\.(jpe?g|png|webp|gif)$/i.test(imagen || "");
+}
+
 // La foto de la tienda: se prefiere el original (…/855338-1-1.jpg) y, si no está, la miniatura grande (thumb_01, webp)
 export function urlsDeImagen(imagen: string, base: string): string[] {
   if (!imagen) return [];
@@ -237,7 +245,13 @@ if (D && D.serve) {
           if (error) throw error;
           // Descripción: se toma de la ficha del producto y solo se guarda si el artículo todavía no tiene una
           // (nunca pisa lo escrito en el programa). Si falla, la revisión igual vale.
-          let extra: { descripcion?: string; descripcion_guardada?: boolean } = {};
+          let extra: { descripcion?: string; descripcion_guardada?: boolean; foto_marcada?: boolean } = {};
+          // Foto: si la ficha publicada trae una imagen real, queda registrada en el artículo (casilla "Foto")
+          // para no volver a comprobar si tiene imagen. Solo agrega: nunca desmarca una que ya estaba.
+          if (r.estado === "publicado" && tieneFotoReal(r.imagen)) {
+            const { data, error: errFoto } = await admin.from("articulos").update({ foto: true }).eq("codigo", codigo).eq("foto", false).select("codigo");
+            if (!errFoto && data && data.length) extra.foto_marcada = true;
+          }
           if (r.estado === "publicado" && r.url) {
             const desc = await bajarDescripcion(r.url, tienda);
             if (desc) {

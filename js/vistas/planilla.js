@@ -708,10 +708,12 @@
       aplicarLocal([r.codigo], "web_revisado_en", ahora);
       // La función trajo la descripción de la ficha y la guardó (solo si el artículo no tenía una)
       if (r.descripcion_guardada) aplicarLocal([r.codigo], "descripcion_web", r.descripcion);
+      // La ficha publicada trae foto: la función dejó marcada la casilla Foto
+      if (r.foto_marcada) aplicarLocal([r.codigo], "foto", true);
     });
   }
   // Columnas a redibujar tras una revisión
-  const colsWeb = r => (r.descripcion_guardada ? ["web_estado", "descripcion_web"] : ["web_estado"]);
+  const colsWeb = r => ["web_estado", ...(r.descripcion_guardada ? ["descripcion_web"] : []), ...(r.foto_marcada ? ["foto"] : [])];
 
   // ---------- Revisar en la web (varios) ----------
   // Los elegidos; si no hay elegidos, todos los que se ven con los filtros. Los resultados llegan
@@ -735,7 +737,7 @@
     boton.classList.add("detener");
     boton.title = "Detener la revisión (lo ya revisado queda guardado)";
     const cuenta = { publicado: 0, solo_variantes: 0, no_esta: 0, error: 0 };
-    let hechos = 0, descripciones = 0;
+    let hechos = 0, descripciones = 0, fotos = 0;
     const total = codigos.length, lotes = Math.ceil(total / lote);
     const caja = $("planilla-progreso"), pista = $("progreso-pista"), barra = $("progreso-barra");
     caja.hidden = false; caja.classList.remove("termino");
@@ -758,6 +760,7 @@
             hechos++;
             cuenta[r.estado] = (cuenta[r.estado] || 0) + 1;
             if (r.descripcion_guardada) descripciones++;
+            if (r.foto_marcada) fotos++;
             if (r.estado !== "error") { aplicarWeb([r]); refrescarCeldas([r.codigo], colsWeb(r)); }
             avance();
           },
@@ -783,6 +786,7 @@
     }
     if (!hechos) return;
     const partes = [`${fmtNum(cuenta.publicado)} en la web`, `${fmtNum(cuenta.solo_variantes)} por variantes`, `${fmtNum(cuenta.no_esta)} no están`];
+    if (fotos) partes.push(`${fmtNum(fotos)} con foto registrada`);
     if (descripciones) partes.push(`${fmtNum(descripciones)} descripciones traídas de la web (sin marcar "Descripción OK")`);
     if (cuenta.error) partes.push(`${fmtNum(cuenta.error)} sin respuesta de la tienda (quedan como estaban)`);
     const cortada = hechos < codigos.length ? `Revisión detenida: ${fmtNum(hechos)} de ${fmtNum(codigos.length)}` : `Revisados ${fmtNum(hechos)}`;
