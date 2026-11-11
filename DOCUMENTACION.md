@@ -112,7 +112,7 @@ Botón **Armar catálogo** (barra de la Planilla y barras de selección; **solo 
   - **Precio:** Tiendanube guarda el precio **con IVA** (57959 = 47900 x 1,21); para que el catálogo siga diciendo "+IVA" se divide por 1,21. Para dejarlo tal cual: secreto opcional `TIENDANUBE_IVA` = `1`.
   - **Descripción y foto:** vienen en la misma respuesta (sin pedir la ficha aparte), con las mismas reglas de siempre (no pisa una descripción existente, no marca "Descripción OK", marca "Foto" si hay imagen).
   - **Límite de la API:** 400 pedidos de capacidad (cabecera `x-rate-limit-limit`); ante un 429 la función espera y reintenta (hasta 3 veces).
-  - **Para activarlo:** (1) volver a desplegar `buscar-en-web`; (2) cargar los dos secretos (el token lo pega Luca); (3) opcional, acelerar la revisión bajando la pausa en `js/config.js` (`revisionWeb`, hoy 10 artículos y 5 s de pausa, pensado para TiendaQuick).
+  - **Para activarlo:** (1) volver a desplegar `buscar-en-web`; (2) cargar los dos secretos (el token lo pega Luca); (3) la revisión ya está acelerada en `js/config.js` (`revisionWeb`: **50 artículos por lote y 2 s de pausa**, antes 10 y 5 s por TiendaQuick). El catálogo, que además baja fotos, sigue con un máximo de 12 por pedido.
   - Prueba contra la API real: `PROBAR_TN=<archivo .env con la clave> node --test pruebas/web.test.mjs`.
 - **Publicar la función:** `buscar-en-web` cambió (precio e imágenes): hay que volver a pegar `supabase/functions/buscar-en-web/index.ts` en Supabase → Edge Functions → buscar-en-web → Code → Deploy updates (Verify JWT sigue apagado).
 - Pruebas: `pruebas/catalogo.test.js` (formato, hojas, PDF y PowerPoint) y `pruebas/web.test.mjs` (lectura del precio y de la foto).

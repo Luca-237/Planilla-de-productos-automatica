@@ -730,7 +730,7 @@
     const codigos = seleccion.size ? [...seleccion] : [...new Set(filtradas().map(f => f.codigo))];
     if (!codigos.length) return toast("No hay artículos para revisar.", "error");
     const { lote, esperaSegundos } = cfgWeb();
-    const minutos = Math.ceil((Math.ceil(codigos.length / lote) * (esperaSegundos + 3)) / 60);
+    const minutos = Math.ceil((Math.ceil(codigos.length / lote) * (esperaSegundos + Math.max(3, lote * 0.15))) / 60);
     if (codigos.length > 50 && !confirm(`Se van a revisar ${fmtNum(codigos.length)} artículos en la web, de a ${lote} con ${esperaSegundos} segundos entre lotes. Tarda unos ${minutos} minuto(s); se puede detener cuando quieras. ¿Seguir?`)) return;
     const control = revisionWeb = new AbortController();
     const boton = $("planilla-revisar-web"), texto = $("planilla-revisar-texto");

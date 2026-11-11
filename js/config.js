@@ -17,8 +17,9 @@ window.COMPRAS_CONFIG = {
   // lo permiten muestran lo guardado al instante y lo renuevan por atrás (hasta maxHoras de antigüedad)
   cache: { frescoSegundos: 60, maxHoras: 168 },
   // "Revisar en la web": de a cuántos artículos y cuántos segundos de pausa entre un lote y el siguiente
-  // (para no cargar la tienda ni la función)
-  revisionWeb: { lote: 10, esperaSegundos: 5 },
+  // (para no cargar la tienda ni la función). Con la API de Tiendanube alcanza con lotes de 50 y 2 segundos
+  // (la función acepta hasta 100 por pedido; el catálogo, que baja fotos, usa como mucho 12 por pedido).
+  revisionWeb: { lote: 50, esperaSegundos: 2 },
   // Búsqueda de un artículo en la web de Cindy (botón junto a la descripción). {codigo} se reemplaza solo.
   // Cuando la tienda pase a Tiendanube: https://cindymayorista2.mitiendanube.com/search/?q={codigo}
   urlBusquedaWeb: "https://www.cindymayorista.com.ar/resultado-busqueda.htm?keywords={codigo}",
