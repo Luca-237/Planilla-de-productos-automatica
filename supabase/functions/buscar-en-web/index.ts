@@ -18,6 +18,11 @@
 //  Con "Accept: text/event-stream" responde por SSE: un evento por código
 //  apenas se revisa (la planilla los va mostrando); sin eso, JSON al final.
 //
+//  De dónde lee: si la función tiene los secretos TIENDANUBE_TOKEN (clave "a medida" de SOLO LECTURA, permiso
+//  "Leer productos") y TIENDANUBE_STORE_ID, consulta la API de Tiendanube por SKU (rápido, sin scrapear). Sin
+//  esos secretos sigue leyendo la web de TiendaQuick como antes. En Tiendanube un producto cuenta como
+//  publicado solo si está visible (published).
+//
 //  Criterio (el mismo que la skill descripciones-web-cindy):
 //    publicado       → en la búsqueda aparece un producto con ese código idéntico
 //    solo_variantes  → no está el código, pero sí sus variantes (3M201-GRE…)
@@ -96,7 +101,12 @@ export function leerDescripcion(html: string): string {
   let prof = 1, fin = -1, m: RegExpExecArray | null;
   while ((m = re.exec(html))) { prof += m[1] ? -1 : 1; if (prof === 0) { fin = m.index; break; } }
   if (fin < 0) return "";
-  let t = html.slice(ini, fin).replace(/<!--[\s\S]*?-->/g, "").replace(/<(style|script)\b[\s\S]*?<\/\1>/gi, "");
+  return limpiarDescripcion(html.slice(ini, fin));
+}
+
+// El HTML libre de una descripción (de la ficha de TiendaQuick o del campo description de Tiendanube) -> lista con "• "
+export function limpiarDescripcion(fragmento: string): string {
+  let t = (fragmento || "").replace(/<!--[\s\S]*?-->/g, "").replace(/<(style|script)\b[\s\S]*?<\/\1>/gi, "");
   // Tablas Etiqueta (en negrita) / Valor -> "Etiqueta: valor"
   let etiqueta = "";
   t = t.replace(/<td\b[^>]*>([\s\S]*?)<\/td>/gi, (_, celda: string) => {
@@ -155,15 +165,79 @@ export async function revisarCodigo(codigo: string, base: string): Promise<Resul
   } finally { clearTimeout(corte); }
 }
 
+// ---------- Lectura por API de Tiendanube (clave de solo lectura) ----------
+export type VarianteTN = { sku?: string | null; price?: string | number | null; promotional_price?: string | number | null; image_id?: number | null };
+export type ProductoTN = {
+  id: number; name?: unknown; published?: boolean; canonical_url?: string; variants?: VarianteTN[];
+  images?: { id: number; src: string; position?: number }[]; description?: unknown;
+};
+export type ResultadoTN = Resultado & { descripcionHtml: string };
+
+// Los textos de Tiendanube vienen por idioma: { es: "…" }
+const textoTN = (v: unknown): string =>
+  typeof v === "string" ? v : v && typeof v === "object" ? String((v as Record<string, unknown>).es ?? Object.values(v)[0] ?? "") : "";
+
+// El precio del catálogo: el promocional si hay, si no el de lista; null si no hay precio.
+// Tiendanube guarda el precio CON IVA (ej. 57959 = 47900 x 1,21), y el catálogo de ingresos lo muestra "+IVA"
+// como TiendaQuick (precio sin IVA): se divide por el IVA (21 %). Para dejarlo tal cual: secreto TIENDANUBE_IVA = 1.
+export const IVA_TN = 1.21;
+export function precioTN(v: VarianteTN | undefined, iva: number = IVA_TN): number | null {
+  if (!v) return null;
+  const n = Number(v.promotional_price) > 0 ? Number(v.promotional_price) : Number(v.price);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.round((n / (iva > 0 ? iva : 1)) * 100) / 100;
+}
+
+// Misma regla que en TiendaQuick, por SKU: el código idéntico = publicado; solo sus variantes (CODIGO-XXX) = solo_variantes.
+// Un producto oculto (published false) no cuenta. q= de la API busca también por nombre y por parte del SKU: se compara el SKU entero.
+export function clasificarTN(codigo: string, productos: ProductoTN[], iva: number = IVA_TN): ResultadoTN {
+  const buscado = codigo.toUpperCase();
+  const visibles = productos.filter((p) => p.published !== false);
+  const sku = (v: VarianteTN) => String(v.sku ?? "").toUpperCase();
+  const armar = (p: ProductoTN, v: VarianteTN, estado: Resultado["estado"]): ResultadoTN => {
+    const fotos = [...(p.images ?? [])].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+    const foto = fotos.find((i) => v.image_id && i.id === v.image_id) ?? fotos[0];
+    return { codigo, estado, url: p.canonical_url ?? "", nombre: textoTN(p.name), imagen: foto?.src ?? "", precio: precioTN(v, iva), descripcionHtml: textoTN(p.description) };
+  };
+  for (const p of visibles) { const v = (p.variants ?? []).find((x) => sku(x) === buscado); if (v) return armar(p, v, "publicado"); }
+  for (const p of visibles) { const v = (p.variants ?? []).find((x) => sku(x).startsWith(buscado + "-")); if (v) return armar(p, v, "solo_variantes"); }
+  return { codigo, estado: "no_esta", url: "", nombre: "", imagen: "", precio: null, descripcionHtml: "" };
+}
+
+export type ConfigTN = { token: string; tiendaId: string; iva?: number };
+const esperar = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
+
+export async function revisarCodigoTN(codigo: string, cfg: ConfigTN, pedir: typeof fetch = fetch): Promise<ResultadoTN> {
+  const url = `https://api.tiendanube.com/v1/${encodeURIComponent(cfg.tiendaId)}/products?q=${encodeURIComponent(codigo)}&per_page=30&fields=id,name,published,canonical_url,variants,images,description`;
+  for (let intento = 0; ; intento++) {
+    const ctrl = new AbortController();
+    const corte = setTimeout(() => ctrl.abort(), ESPERA_MAX_MS);
+    try {
+      const r = await pedir(url, { signal: ctrl.signal, headers: { Authentication: "bearer " + cfg.token, "User-Agent": "Cindy-Compras (revision de catalogo)" } });
+      // Límite de pedidos: se espera lo que indica la API y se reintenta (hasta 3 veces)
+      if (r.status === 429 && intento < 3) { await esperar(Math.min(Number(r.headers.get("x-rate-limit-reset")) || 1000, 5000)); continue; }
+      if (r.status === 401 || r.status === 403) throw new Error("Tiendanube rechazó la clave (revisá el secreto TIENDANUBE_TOKEN y que tenga el permiso Leer productos)");
+      if (!r.ok) throw new Error("Tiendanube respondió " + r.status);
+      const lista = await r.json();
+      if (!Array.isArray(lista)) throw new Error("Tiendanube devolvió algo inesperado");
+      return clasificarTN(codigo, lista as ProductoTN[], cfg.iva ?? IVA_TN);
+    } finally { clearTimeout(corte); }
+  }
+}
+
 // ¿La tarjeta trae una foto subida de verdad? Las fotos de producto viven en mods/html/fil/Model/Product/<id>/…;
 // cualquier otra cosa (imagen de relleno, vacío) no cuenta.
 export function tieneFotoReal(imagen: string): boolean {
-  return /(^|\/)Model\/Product\/\d+\/[^\/]+\.(jpe?g|png|webp|gif)$/i.test(imagen || "");
+  // TiendaQuick: …/Model/Product/<id>/foto.jpg; Tiendanube: https://dcdn-us.mitiendanube.com/stores/…/products/foto.jpg
+  return /(^|\/)Model\/Product\/\d+\/[^\/]+\.(jpe?g|png|webp|gif)$/i.test(imagen || "")
+    || /^https:\/\/[a-z0-9.-]*mitiendanube\.com\/stores\/.+\.(jpe?g|png|webp|gif)(\?.*)?$/i.test(imagen || "");
 }
 
 // La foto de la tienda: se prefiere el original (…/855338-1-1.jpg) y, si no está, la miniatura grande (thumb_01, webp)
 export function urlsDeImagen(imagen: string, base: string): string[] {
   if (!imagen) return [];
+  // Tiendanube: la API ya da la dirección completa de la foto
+  if (/^https:\/\/[a-z0-9.-]*mitiendanube\.com\//i.test(imagen)) return [imagen];
   const abs = (p: string) => new URL(p, base + "/").href;
   const original = imagen.replace(/thumb_\d+_/, "").replace(/\.webp$/i, "");
   const grande = imagen.replace(/thumb_\d+_/, "thumb_01_");
@@ -217,6 +291,10 @@ if (D && D.serve) {
       if (!service) throw new Error("La función no tiene la clave de servicio configurada");
       const tienda = (D.env.get("TIENDA_URL") || "https://www.cindymayorista.com.ar").replace(/\/+$/, "");
       const admin = createClient(url, service, { auth: { persistSession: false } });
+      // Con la clave de Tiendanube se lee por API; sin ella, la web de TiendaQuick como antes
+      const tnToken = (D.env.get("TIENDANUBE_TOKEN") ?? "").trim(), tnTienda = (D.env.get("TIENDANUBE_STORE_ID") ?? "").trim();
+      const ivaTN = Number(D.env.get("TIENDANUBE_IVA")); // opcional; por defecto 1,21
+      const tn: ConfigTN | null = tnToken && tnTienda ? { token: tnToken, tiendaId: tnTienda, iva: ivaTN > 0 ? ivaTN : IVA_TN } : null;
 
       // ¿Quién llama? Admin o carga, activo
       const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
@@ -238,7 +316,7 @@ if (D && D.serve) {
 
       const revisar = async (codigo: string) => {
         try {
-          const r = await revisarCodigo(codigo, tienda);
+          const { descripcionHtml = "", ...r } = tn ? await revisarCodigoTN(codigo, tn) : { ...(await revisarCodigo(codigo, tienda)), descripcionHtml: "" };
           const { error } = await admin.from("articulos").update({
             web_estado: r.estado, web_revisado_en: new Date().toISOString(), web_url: r.url, web_nombre: r.nombre,
           }).eq("codigo", codigo);
@@ -253,11 +331,11 @@ if (D && D.serve) {
             if (!errFoto && data && data.length) extra.foto_marcada = true;
           }
           if (r.estado === "publicado" && r.url) {
-            const desc = await bajarDescripcion(r.url, tienda);
+            const desc = tn ? limpiarDescripcion(descripcionHtml) : await bajarDescripcion(r.url, tienda);
             if (desc) {
               const { data, error: errDesc } = await admin.from("articulos").update({ descripcion_web: desc })
                 .eq("codigo", codigo).eq("descripcion_web", "").select("codigo");
-              extra = { descripcion: desc, descripcion_guardada: !errDesc && !!data && data.length > 0 };
+              extra = { ...extra, descripcion: desc, descripcion_guardada: !errDesc && !!data && data.length > 0 };
             }
           }
           // Para el catálogo: la foto del producto (la lectura de la tienda ya la trae)

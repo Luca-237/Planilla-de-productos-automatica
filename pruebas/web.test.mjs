@@ -4,7 +4,7 @@
 // Con PROBAR_TIENDA=1 además consulta la tienda real.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { leerResultados, clasificar, decodificar, revisarCodigo, urlsDeImagen, leerPrecio, leerDescripcion, tieneFotoReal } from '../supabase/functions/buscar-en-web/index.ts';
+import { leerResultados, clasificar, decodificar, revisarCodigo, urlsDeImagen, leerPrecio, leerDescripcion, tieneFotoReal, limpiarDescripcion, clasificarTN, precioTN, revisarCodigoTN } from '../supabase/functions/buscar-en-web/index.ts';
 
 const tarjeta = (codigo, nombre, url, img = '') => `<div class="col-xs-24 product-listing-item"><input type="hidden" value="1" name="products_id">
   <div class="product-box" itemscope itemtype="http://schema.org/Product"><meta itemprop="name" content="${nombre}" />
@@ -113,6 +113,94 @@ test('foto real: solo cuenta la imagen subida de producto, no un relleno ni un v
   assert.equal(tieneFotoReal(''), false);
   assert.equal(tieneFotoReal('images/sin-imagen.png'), false);
   assert.equal(tieneFotoReal('mods/html/fil/Model/Product/sin-foto.png'), false);
+});
+
+// ---------- Tiendanube (API de solo lectura) ----------
+const prodTN = (extra = {}) => ({
+  id: 1, name: { es: 'MOCHILA FLOW CHIMOLA' }, published: true, canonical_url: 'https://tienda.mitiendanube.com/productos/mochila-flow/',
+  description: { es: '<ul>\n<li>Marca y Modelo: Chimola, Mochila Flow.</li>\n<li>Medidas: 41 x 32 x 13 cm.</li>\n</ul>' },
+  variants: [{ sku: '3M201', price: '57959.00', promotional_price: null, image_id: null }, { sku: '3M201-CAM', price: '57959.00', promotional_price: null, image_id: 22 }],
+  images: [{ id: 11, src: 'https://dcdn-us.mitiendanube.com/stores/008/128/903/products/uno-1024-1024.jpg', position: 1 }, { id: 22, src: 'https://dcdn-us.mitiendanube.com/stores/008/128/903/products/camel-1024-1024.jpg', position: 2 }],
+  ...extra,
+});
+
+test('Tiendanube: SKU idéntico = publicado, con nombre, url, precio, foto y descripción', () => {
+  const r = clasificarTN('3M201', [prodTN()]);
+  assert.equal(r.estado, 'publicado');
+  assert.equal(r.nombre, 'MOCHILA FLOW CHIMOLA');
+  assert.equal(r.url, 'https://tienda.mitiendanube.com/productos/mochila-flow/');
+  assert.equal(r.precio, 47900); // 57959 con IVA = 47900 + 21 %
+  assert.equal(clasificarTN('3M201', [prodTN()], 1).precio, 57959); // TIENDANUBE_IVA=1: tal cual
+  assert.match(r.imagen, /uno-1024/);
+  assert.match(r.descripcionHtml, /<li>Marca y Modelo/);
+});
+
+test('Tiendanube: la variante pedida usa su propia foto; sin SKU idéntico pero con variantes = solo_variantes', () => {
+  assert.match(clasificarTN('3M201-CAM', [prodTN()]).imagen, /camel-1024/);
+  const soloVar = prodTN({ variants: [{ sku: '8216-ROJ', price: '100' }, { sku: '8216-AZU', price: '100' }] });
+  assert.equal(clasificarTN('8216', [soloVar]).estado, 'solo_variantes');
+});
+
+test('Tiendanube: no confunde parecidos (q= trae 148216 al buscar 8216) ni cuenta productos ocultos', () => {
+  const parecido = prodTN({ variants: [{ sku: '148216', price: '5' }] });
+  assert.equal(clasificarTN('8216', [parecido]).estado, 'no_esta');
+  assert.equal(clasificarTN('3M201', [prodTN({ published: false })]).estado, 'no_esta');
+  assert.equal(clasificarTN('3m201', [prodTN()]).estado, 'publicado'); // mayúsculas no importan
+  assert.equal(clasificarTN('X', []).estado, 'no_esta');
+});
+
+test('Tiendanube: precio promocional si hay; sin precio válido = null', () => {
+  assert.equal(precioTN({ price: '1210', promotional_price: '968' }), 800);
+  assert.equal(precioTN({ price: '1210', promotional_price: null }), 1000);
+  assert.equal(precioTN({ price: '15728.79' }), 12999);
+  assert.equal(precioTN({ price: '1000' }, 1), 1000);
+  assert.equal(precioTN({ price: null }), null);
+  assert.equal(precioTN({ price: '0' }), null);
+  assert.equal(precioTN(undefined), null);
+});
+
+test('Tiendanube: la descripción HTML de la API queda como lista con "• "', () => {
+  assert.equal(limpiarDescripcion('<ul>\n<li>Marca y Modelo: Chimola, Mochila Flow.</li>\n<li>Medidas: 41 x 32 x 13 cm.</li>\n</ul>'),
+    '• Marca y Modelo: Chimola, Mochila Flow.\n• Medidas: 41 x 32 x 13 cm.');
+  assert.equal(limpiarDescripcion('<p>Medidas: 22,5 &times; 31 &times; 9 cm.</p><p>Materiales: Exterior: 100% PVC.</p>'), '• Medidas: 22,5 × 31 × 9 cm.\n• Materiales: Exterior: 100% PVC.');
+  assert.equal(limpiarDescripcion(''), '');
+  assert.equal(limpiarDescripcion('<p> </p>'), '');
+});
+
+test('Tiendanube: la foto de la CDN cuenta como foto real y se baja tal cual', () => {
+  const f = 'https://dcdn-us.mitiendanube.com/stores/008/128/903/products/35415-bb2d-1024-1024.jpg';
+  assert.equal(tieneFotoReal(f), true);
+  assert.equal(tieneFotoReal('https://otro-sitio.com/stores/1/products/a.jpg'), false);
+  assert.deepEqual(urlsDeImagen(f, 'https://www.cindymayorista.com.ar'), [f]);
+});
+
+const respuestaFalsa = (status, cuerpo, cab = {}) => ({ status, ok: status >= 200 && status < 300, headers: { get: k => cab[k.toLowerCase()] ?? null }, json: async () => cuerpo });
+
+test('Tiendanube: pide por q=, con la clave en el encabezado y solo los campos necesarios', async () => {
+  let visto;
+  const r = await revisarCodigoTN('3M201', { token: 'T0K3N', tiendaId: '123' }, async (url, init) => { visto = { url, init }; return respuestaFalsa(200, [prodTN()]); });
+  assert.equal(r.estado, 'publicado');
+  assert.match(visto.url, /^https:\/\/api\.tiendanube\.com\/v1\/123\/products\?q=3M201&per_page=30&fields=/);
+  assert.equal(visto.init.headers.Authentication, 'bearer T0K3N');
+  assert.equal(visto.init.method, undefined); // solo lectura: GET
+});
+
+test('Tiendanube: ante el límite de pedidos (429) espera y reintenta; con 401 explica el problema', async () => {
+  let n = 0;
+  const r = await revisarCodigoTN('3M201', { token: 'x', tiendaId: '1' }, async () => (++n === 1 ? respuestaFalsa(429, null, { 'x-rate-limit-reset': '5' }) : respuestaFalsa(200, [prodTN()])));
+  assert.equal(n, 2);
+  assert.equal(r.estado, 'publicado');
+  await assert.rejects(revisarCodigoTN('A', { token: 'x', tiendaId: '1' }, async () => respuestaFalsa(401, {})), /rechazó la clave/);
+  await assert.rejects(revisarCodigoTN('A', { token: 'x', tiendaId: '1' }, async () => respuestaFalsa(500, {})), /respondió 500/);
+  await assert.rejects(revisarCodigoTN('A', { token: 'x', tiendaId: '1' }, async () => respuestaFalsa(200, { error: 1 })), /inesperado/);
+});
+
+test('Tiendanube real (solo con PROBAR_TN=1 y el archivo de la clave)', { skip: !process.env.PROBAR_TN && 'sin PROBAR_TN' }, async () => {
+  const fs = await import('node:fs');
+  const env = Object.fromEntries(fs.readFileSync(process.env.PROBAR_TN, 'utf8').split(/\r?\n/).filter(Boolean).map(l => l.split(/=(.*)/s).slice(0, 2)));
+  const cfg = { token: env.TIENDANUBE_TOKEN, tiendaId: env.TIENDANUBE_STORE_ID };
+  const res = await Promise.all(['167.5080.1', '3M267', '6203703', '3M201', 'NOEXISTE999'].map(c => revisarCodigoTN(c, cfg)));
+  console.log(res.map(r => ({ c: r.codigo, e: r.estado, precio: r.precio, foto: tieneFotoReal(r.imagen), desc: limpiarDescripcion(r.descripcionHtml).slice(0, 60) })));
 });
 
 test('tienda real (solo con PROBAR_TIENDA=1)', { skip: !process.env.PROBAR_TIENDA && 'sin PROBAR_TIENDA' }, async () => {
