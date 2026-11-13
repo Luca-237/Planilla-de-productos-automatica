@@ -83,6 +83,13 @@
     doc.lineas.forEach((l, i) => {
       const rl = { id: nuevoId(), remito_id: rem.id, renglon: i + 1, codigo: l.codigo, descripcion: l.descripcion || "", cantidad: l.cantidad };
       remLineas.push(rl);
+      // Como el trigger articulo_desde_remito: crea el artículo si falta y lo marca como llegado (con o sin orden)
+      if (!articulos.has(l.codigo)) articulos.set(l.codigo, { codigo: l.codigo, descripcion: l.descripcion || "", proveedor_id: p.id, tipo: "PADRE", padre_codigo: null,
+        variantes: "", cod_barra: "", foto: false, descripcion_ok: false, cargado_web: false, catalogo: false, fecha_alta_web: null,
+        sin_stock: false, observaciones: "", titulo_web: "", descripcion_web: "", estado_descripcion: "", ya_no_esta: false });
+      articulos.get(l.codigo).llego = true;
+      const padreRl = articulos.get(l.codigo).padre_codigo;
+      if (padreRl && articulos.has(padreRl)) articulos.get(padreRl).llego = true;
       let resto = l.cantidad;
       const asignado = [];
       lineas.filter(x => x.codigo === l.codigo).map(x => ({ x, o: ordenes.find(o => o.id === x.orden_id) }))
@@ -131,6 +138,29 @@
         recibido: rec, pendiente: falta, ultima_recepcion: recs.sort().pop() || null, estado,
         dias_desde_orden: dias(o.fecha), dias_atraso: Math.max(dias(l.fecha_entrega || o.fecha), 0), cerrada: o.cerrada };
     }).sort((a, b) => b.fecha_orden.localeCompare(a.fecha_orden) || a.orden.localeCompare(b.orden) || a.renglon - b.renglon);
+  }
+
+  // Lo que llegó sin orden, una fila por código (como la parte "sin_orden" de v_planilla)
+  function vSinOrden() {
+    const porCodigo = new Map();
+    remLineas.forEach(rl => {
+      const sin = rl.cantidad - recepciones.filter(r => r.remito_linea_id === rl.id).reduce((a, r) => a + r.cantidad, 0);
+      if (sin <= 0) return;
+      const m = remitos.find(x => x.id === rl.remito_id), pv = proveedores.find(p => p.id === m.proveedor_id);
+      const g = porCodigo.get(rl.codigo) || { codigo: rl.codigo, unidades: 0, ultima: "", remitos: new Set() };
+      g.unidades += sin; g.remitos.add(m.numero);
+      if (m.fecha >= g.ultima) Object.assign(g, { ultima: m.fecha, descripcion: rl.descripcion, proveedor: alias(pv), razon_social: pv.nombre });
+      porCodigo.set(rl.codigo, g);
+    });
+    const conOrden = c => lineas.some(l => l.codigo === c);
+    return [...porCodigo.values()].filter(g => {
+      const a = articulos.get(g.codigo);
+      return a && !conOrden(a.codigo) && (!a.padre_codigo || (!conOrden(a.padre_codigo) && !porCodigo.has(a.padre_codigo)));
+    }).sort((a, b) => a.codigo.localeCompare(b.codigo)).map(g => ({
+      id: null, orden_id: null, orden: null, fecha_orden: null, proveedor: g.proveedor, razon_social: g.razon_social, codigo: g.codigo, descripcion: g.descripcion,
+      cantidad: g.unidades, precio_unitario: null, estado: "sin_orden", recibido: g.unidades, pendiente: null, ultima_recepcion: g.ultima,
+      dias_desde_orden: null, dias_atraso: null, remitos: [...g.remitos].sort().join(", "),
+    }));
   }
 
   // ---------- Datos iniciales (inventados) ----------
@@ -210,7 +240,7 @@
       .map(a => ({ ...a, orden: null, fecha_orden: null, proveedor: (proveedores.find(p => p.id === a.proveedor_id) || {}).nombre || "", nombre: a.descripcion, estado: null,
         padre: a.padre_codigo || a.codigo, es_variante: a.tipo === "VARIANTE", n_variantes: hijos(a.codigo).length, color: colorDe(a).nombre || null, color_codigo: colorDe(a).codigo || null, llego: !!a.llego }))),
       // Cada artículo seguido de sus variantes (que no traen cantidades), como v_planilla
-      planilla: () => espera(vLineas().flatMap(v => {
+      planilla: () => espera(R.util.ordenPlanilla([...vLineas(), ...vSinOrden()].flatMap(v => {
         const a = articulos.get(v.codigo), c = colorDe(a);
         // "Llegó": casilla del artículo; las variantes muestran la del padre (como v_planilla)
         const llego = a.llego !== undefined ? !!a.llego : lineas.some(l => l.codigo === a.codigo && recibido(l) > 0);
@@ -219,9 +249,9 @@
         const hijas = hijos(a.codigo).map(x => ({ ...x, llego, orden: v.orden, fecha_orden: v.fecha_orden, proveedor: v.proveedor, razon_social: v.razon_social,
           estado: v.estado, ultima_recepcion: v.ultima_recepcion, dias_desde_orden: v.dias_desde_orden, dias_atraso: v.dias_atraso,
           cantidad: null, precio_unitario: null, recibido: null, pendiente: null, oc_linea_id: v.id, orden_id: v.orden_id,
-          nombre: x.descripcion, padre: a.codigo, es_variante: true, n_variantes: 0, color: colorDe(x).nombre, color_codigo: colorDe(x).codigo }));
+          nombre: x.descripcion, padre: a.codigo, es_variante: true, n_variantes: 0, color: colorDe(x).nombre, color_codigo: colorDe(x).codigo, remitos: v.remitos || null }));
         return [fila, ...hijas];
-      })),
+      }))),
       sobrantes: () => espera(remLineas.map(rl => {
         const m = remitos.find(x => x.id === rl.remito_id);
         const sin = rl.cantidad - recepciones.filter(r => r.remito_linea_id === rl.id).reduce((a, r) => a + r.cantidad, 0);
@@ -302,6 +332,22 @@
         const c = { id: nuevoId(), codigo, nombre: String(nombre).trim(), activo: true }; colores.push(c); return copia(c);
       },
       actualizar: async (id, d) => { if (!puedeCargar()) sinPermiso(); Object.assign(colores.find(c => c.id === id), d); },
+    },
+    // Imita a buscar-productos: un resultado por nombre + categoría, sobre unos pocos productos de ejemplo
+    productos: {
+      buscar: async (q, { limite = 8 } = {}) => {
+        const norm = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+        const buscado = norm(q);
+        if (buscado.length < 2) return [];
+        const EJEMPLOS = [
+          ["Mochila Trendy", "Marroquinería > Mochilas > Urbanas", "Urbanas", 12, true], ["Mochila NBA Lakers", "Marroquinería > Mochilas > Urbanas", "Urbanas", 2, true],
+          ["Cartuchera Trendy", "Escolar > Cartucheras", "Cartucheras", 42, true], ["Cartuchera Disney", "Escolar > Cartucheras", "Cartucheras", 6, false],
+          ["Broche Trendy", "Accesorios y Beauty > Acc. De Pelo", "Acc. De Pelo", 41, true], ["Neceser Disney Stitch", "Viajes > Organizadores", "Organizadores", 2, true],
+        ];
+        return EJEMPLOS.filter(e => norm(e[0]).includes(buscado))
+          .sort((a, b) => Number(norm(b[0]).startsWith(buscado)) - Number(norm(a[0]).startsWith(buscado)))
+          .slice(0, limite).map((e, i) => ({ clave: norm(e[0]) + "|" + i, nombre: e[0], ruta: e[1], categoria: e[2], categoria_id: 1000 + i, cantidad: e[3], publicado: e[4], imagen: "" }));
+      },
     },
     // Imita a la función buscar-en-web con resultados fijos (no consulta la tienda real)
     web: {

@@ -153,8 +153,20 @@ window.COMPRAS = window.COMPRAS || {};
   // Estado de una línea de OC (como lo calcula la base en v_oc_lineas)
   const ESTADOS = {
     pendiente: "Pendiente", parcial: "Parcial", completa: "Completa", cerrada: "Cerrada", cancelada: "Cancelada",
+    sin_orden: "Llegó sin orden", // solo en la Planilla: artículo de un remito que no encontró orden de compra
   };
   const chipEstado = e => `<span class="estado ${esc(e)}">${esc(ESTADOS[e] || e)}</span>`;
+
+  // Planilla: de la fecha más nueva a la más vieja. Las filas de una orden van por la fecha de la OC y las que
+  // llegaron sin orden por la fecha del remito. Orden estable: dentro de la misma fecha queda como vino de la base
+  // (cada artículo seguido de sus variantes).
+  const ordenPlanilla = filas => {
+    const fecha = f => f.fecha_orden || (f.estado === "sin_orden" ? f.ultima_recepcion : "") || "";
+    return filas.map((f, i) => [f, i]).sort(([a, i], [b, j]) => {
+      const x = fecha(a), y = fecha(b);
+      return x === y ? i - j : x < y ? 1 : -1;
+    }).map(([f]) => f);
+  };
 
   // Proveedor: el nombre corto (Target, Bagcherry…) o, si no tiene, la razón social de Manager
   const nombreProveedor = p => p ? (String(p.nombre_corto || "").trim() || p.nombre || "") : "";
@@ -185,6 +197,6 @@ window.COMPRAS = window.COMPRAS || {};
 
   R.util = {
     esqueleto, $, esc, norm, aEmail, aUsuario, hoy, fmtFecha, fmtNum, fmtPesos, fechaHora, plural, toast, descargarCSV,
-    iniciarDialogos, info, iniciarAyudas, iniciarTema, ICONOS, ESTADOS, chipEstado, nombreProveedor, etiquetaProveedor,
+    iniciarDialogos, info, iniciarAyudas, iniciarTema, ICONOS, ESTADOS, chipEstado, ordenPlanilla, nombreProveedor, etiquetaProveedor,
   };
 })(window.COMPRAS);

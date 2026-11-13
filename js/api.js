@@ -112,7 +112,9 @@
     // opciones.alActualizar(datos): la pantalla se abre con lo guardado y se avisa si llegan datos más nuevos
     pendientes: opciones => cacheado("pendientes", () => todo(() => sb.from("v_pendientes").select("*").order("fecha_orden").order("orden").order("renglon")).then(numeros), opciones),
     lineas: opciones => cacheado("lineas", () => todo(() => sb.from("v_oc_lineas").select("*").order("fecha_orden", { ascending: false }).order("orden").order("renglon")).then(numeros), opciones),
-    planilla: opciones => cacheado("planilla", () => todo(() => sb.from("v_planilla").select("*").order("fecha_orden", { ascending: false }).order("orden").order("padre").order("es_variante").order("codigo")).then(numeros), opciones),
+    // Lo que llegó sin orden (estado "sin_orden", sin fecha de OC) se ubica por la fecha del remito, entre las órdenes
+    planilla: opciones => cacheado("planilla", () => todo(() => sb.from("v_planilla").select("*").order("fecha_orden", { ascending: false, nullsFirst: false }).order("orden").order("padre").order("es_variante").order("codigo"))
+      .then(numeros).then(R.util.ordenPlanilla), opciones),
     // Artículos cargados que todavía no tienen una orden de compra (Planilla con "Con orden de compra" apagado)
     articulosSinOrden: opciones => cacheado("sin_orden", () => todo(() => sb.from("v_articulos_sin_orden").select("*").order("codigo")).then(numeros), opciones),
     sobrantes: opciones => cacheado("sobrantes", () => todo(() => sb.from("v_sobrantes").select("*").order("fecha", { ascending: false })).then(numeros), opciones),
@@ -295,6 +297,37 @@
     },
   };
 
+  // ---------- Buscador de productos mientras se escribe (Edge Function buscar-productos) ----------
+  // Devuelve un resultado por nombre + categoría: [{ clave, nombre, categoria, ruta, categoria_id, cantidad, publicado, imagen }].
+  // La clave de Tiendanube vive en la función; acá solo viaja la sesión. "senal" (AbortController.signal) cancela la
+  // consulta anterior cuando se sigue escribiendo.
+  const productos = {
+    async buscar(q, { limite = 8, senal } = {}) {
+      q = String(q || "").trim();
+      if (q.length < 2) return [];
+      const c = window.COMPRAS_CONFIG, s = await auth.sesion();
+      if (!s) throw new Error("La sesión venció. Volvé a ingresar.");
+      let r;
+      try {
+        r = await fetch(c.supabaseUrl.replace(/\/+$/, "") + "/functions/v1/" + (c.funcionBuscarProductos || "buscar-productos"), {
+          method: "POST", signal: senal, body: JSON.stringify({ q, limite }),
+          headers: { Authorization: "Bearer " + s.access_token, apikey: c.supabaseKey, "Content-Type": "application/json" },
+        });
+      } catch (e) {
+        if (e.name === "AbortError") throw e;
+        throw new Error('No se pudo contactar la función "buscar-productos". ¿Está publicada en Supabase?');
+      }
+      let j = null;
+      try { j = await r.json(); } catch (e) {}
+      if (!r.ok) {
+        let m = (j && (j.error || j.msg || j.message)) || "La función respondió " + r.status;
+        if (/Invalid JWT|UNAUTHORIZED/i.test(m)) m = 'La función rechazó la sesión. En Supabase → Edge Functions → buscar-productos → desactivar "Verify JWT".';
+        throw new Error(mensaje({ message: m }));
+      }
+      return (j && j.resultados) || [];
+    },
+  };
+
   // ---------- Importar la planilla anterior (solo admin) ----------
   const importacion = {
     // Lo que ya está en la base, para no repetirlo
@@ -347,5 +380,5 @@
     resetearPassword: (id, password) => usuarios.llamar("resetear_password", { id, password }),
   };
 
-  R.api = { configurado, iniciar, auth, documentos, vistas, ordenes, remitos, proveedores, articulos, colores, preferencias, usuarios, web, importacion, cache, asignaciones, backups };
+  R.api = { configurado, iniciar, auth, documentos, vistas, ordenes, remitos, proveedores, articulos, colores, preferencias, usuarios, web, productos, importacion, cache, asignaciones, backups };
 })(window.COMPRAS);

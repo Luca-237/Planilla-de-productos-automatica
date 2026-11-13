@@ -60,15 +60,18 @@
     ["descripcion_web", "Descripción web", "Casillas", vistaDesc, "celda-desc"],
     // Las variantes (colores) no llevan casilla propia: es del artículo padre
     ...Object.keys(TILDES).map(k => [k, TILDES[k], "Casillas", k === "llego" ? (f => f.es_variante ? "" : casilla(k)(f)) : casilla(k), "num celda-tilde"]),
-    ["orden", "Orden de compra", "Compra"],
+    // Lo que llegó por remito sin orden de compra: en vez de la orden, los remitos en los que llegó
+    ["orden", "Orden de compra", "Compra", f => f.orden ? esc(f.orden)
+      : f.estado === "sin_orden" ? `<span class="sin-orden-ref">Sin orden</span>${f.remitos ? `<small>Remito ${esc(f.remitos)}</small>` : ""}` : ""],
     ["fecha_orden", "Fecha OC", "Compra", f => fmtFecha(f.fecha_orden)],
     ["proveedor", "Proveedor", "Compra"],
     ["razon_social", "Razón social", "Compra"],
     ["cantidad", "Cantidad", "Compra", f => f.es_variante ? "" : fmtNum(f.cantidad), "num"],
     ["precio_unitario", "Precio unit.", "Compra", f => f.es_variante ? "" : fmtPesos(f.precio_unitario), "num"],
     ["estado", "Estado", "Compra", f => f.estado ? chipEstado(f.estado) : ""],
-    ["pendiente", "Falta", "Compra", f => f.es_variante ? "" : fmtNum(f.pendiente), "num"],
-    ["dias_desde_orden", "Días", "Compra", f => fmtNum(f.dias_desde_orden), "num"],
+    // Sin orden (lo que llegó sin OC o los artículos sueltos) no hay "Falta" ni "Días": quedan vacías, no en 0
+    ["pendiente", "Falta", "Compra", f => f.es_variante || f.pendiente == null ? "" : fmtNum(f.pendiente), "num"],
+    ["dias_desde_orden", "Días", "Compra", f => f.dias_desde_orden == null ? "" : fmtNum(f.dias_desde_orden), "num"],
     ["ultima_recepcion", "Última llegada", "Compra", f => fmtFecha(f.ultima_recepcion)],
     ["tipo", "Tipo", "Web"],
     ["variantes", "Variantes", "Web"],
@@ -156,7 +159,7 @@
       return falta === "ya_no_esta" ? !!f[falta] : !f[falta];
     };
     return f => (!prov || f.proveedor === prov) && (!est || f.estado === est) && pasa(f)
-      && (!q || norm(`${f.codigo} ${f.nombre} ${f.orden} ${f.proveedor} ${f.razon_social || ""}`).includes(q));
+      && (!q || norm(`${f.codigo} ${f.nombre} ${f.orden || ""} ${f.remitos || ""} ${f.proveedor} ${f.razon_social || ""}`).includes(q));
   }
 
   function filtradas() {
@@ -422,12 +425,16 @@
     const s = window.getSelection(); if (s) s.removeAllRanges();
   }
 
+  // Orden de compra como texto (copiar y exportar): lo que llegó sin orden lleva los remitos
+  const ordenTexto = f => f.orden || (f.estado === "sin_orden" ? `Sin orden${f.remitos ? ` (remito ${f.remitos})` : ""}` : "");
+
   // Lo que se ve en cada celda, como texto: casillas TRUE/FALSE (como en Sheets), fechas dd/mm/aaaa
   function valorCopia(c, f) {
     const k = c.clave, v = f[k];
     if (k === "web_estado") return v ? ({ publicado: "En la web", solo_variantes: "Por variantes", no_esta: "No está" })[v] : "Sin revisar";
     if (typeof v === "boolean") return v ? "TRUE" : "FALSE";
     if (k === "estado") return ESTADOS[v] || v || "";
+    if (k === "orden") return ordenTexto(f);
     if (/fecha|recepcion/.test(k)) return v ? fmtFecha(v) : "";
     return v == null ? "" : String(v);
   }
@@ -638,7 +645,7 @@
     if (!f) return;
     popIndice = i;
     popTextoOriginal = f.descripcion_web || "";
-    $("pop-desc-titulo").innerHTML = `${esc(f.codigo)} · ${esc(f.nombre)}<small>${esc(f.proveedor)} · OC ${esc(f.orden)}</small>`;
+    $("pop-desc-titulo").innerHTML = `${esc(f.codigo)} · ${esc(f.nombre)}<small>${esc(f.proveedor)} · ${f.orden ? `OC ${esc(f.orden)}` : f.estado === "sin_orden" ? `Llegó sin orden (remito ${esc(f.remitos || "")})` : "Sin orden de compra"}</small>`;
     $("pop-desc-web").hidden = !(f.web_url || (f.cargado_web && urlWeb(f.codigo)));
     if (!$("pop-desc-web").hidden) $("pop-desc-web").href = f.web_url || urlWeb(f.codigo);
     pintarAvisoWeb(f);
@@ -966,6 +973,7 @@
       const v = f[c.clave];
       if (typeof v === "boolean") return v ? "Sí" : "No";
       if (c.clave === "estado") return ESTADOS[v] || v;
+      if (c.clave === "orden") return ordenTexto(f);
       if (/fecha|recepcion/.test(c.clave)) return v ? fmtFecha(v) : "";
       return v ?? "";
     };

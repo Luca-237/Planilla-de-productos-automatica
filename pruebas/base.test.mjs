@@ -617,3 +617,76 @@ test('restaurar desde el Excel del backup: vuelve todo lo borrado, sin duplicar,
   const nuevo = (await db.query(`insert into public.proveedores (cuit, nombre) values ('30000000007', 'NUEVO TRAS RESTAURAR') returning id`)).rows[0].id;
   assert.ok(Number(nuevo) > Math.max(...antes.proveedores.map(p => Number(p.id))));
 });
+
+test('lo que llega por remito sin orden: crea el artículo, marca "Llegó" y sale en la Planilla y en "Subir a la página"', async () => {
+  const cuitSO = '30555555550';
+  const remSO = (numero, fecha, lineas) => ({ ...remito(numero, fecha, lineas), cuit: cuitSO, proveedor: 'PROVEEDOR SIN ORDEN SA' });
+  // Un artículo que ya existía (con variante) y uno nuevo, ninguno con orden
+  await db.exec(`insert into public.articulos (codigo, descripcion) values ('SN-VIEJO', 'YA CARGADO');
+                 insert into public.articulos (codigo, descripcion, tipo, padre_codigo) values ('SN-VIEJO-NEG', 'YA CARGADO NEGRO', 'VARIANTE', 'SN-VIEJO')`);
+
+  // La simulación no crea nada
+  await cargarRemito(remSO('0007-00000001', '2026-11-10', [['SN-NUEVO', 4]]), false);
+  assert.equal((await como(U.consulta, "select count(*)::int as n from public.articulos where codigo = 'SN-NUEVO'"))[0].n, 0);
+
+  await cargarRemito(remSO('0007-00000001', '2026-11-10', [['SN-NUEVO', 4], ['SN-VIEJO', 2]]));
+  await cargarRemito(remSO('0007-00000002', '2026-11-11', [['SN-NUEVO', 1]]));
+  const art = await como(U.consulta, "select codigo, descripcion, llego, (proveedor_id is not null) as con_prov from public.articulos where codigo in ('SN-NUEVO', 'SN-VIEJO') order by codigo");
+  assert.deepEqual(art, [
+    { codigo: 'SN-NUEVO', descripcion: 'ART SN-NUEVO', llego: true, con_prov: true },
+    { codigo: 'SN-VIEJO', descripcion: 'YA CARGADO', llego: true, con_prov: false }, // no se pisa lo que ya estaba
+  ]);
+
+  // Planilla: una fila por artículo (las variantes debajo), estado "sin_orden", unidades y remitos
+  const planilla = u => como(u, "select codigo, orden, estado, cantidad::float8 as cantidad, ultima_recepcion::text as ultima, remitos, llego, es_variante, proveedor from public.v_planilla where codigo like 'SN-%' order by padre, es_variante, codigo");
+  assert.deepEqual(await planilla(U.consulta), [
+    { codigo: 'SN-NUEVO', orden: null, estado: 'sin_orden', cantidad: 5, ultima: '2026-11-11', remitos: '0007-00000001, 0007-00000002', llego: true, es_variante: false, proveedor: 'PROVEEDOR SIN ORDEN SA' },
+    { codigo: 'SN-VIEJO', orden: null, estado: 'sin_orden', cantidad: 2, ultima: '2026-11-10', remitos: '0007-00000001', llego: true, es_variante: false, proveedor: 'PROVEEDOR SIN ORDEN SA' },
+    { codigo: 'SN-VIEJO-NEG', orden: null, estado: 'sin_orden', cantidad: null, ultima: '2026-11-10', remitos: '0007-00000001', llego: true, es_variante: true, proveedor: 'PROVEEDOR SIN ORDEN SA' },
+  ]);
+  // Lo que usa "Subir a la página": llegó y no está cargado en la web
+  const subir = async () => (await como(U.carga, "select codigo from public.v_planilla where codigo like 'SN-%' and llego and not cargado_web and not es_variante order by codigo")).map(f => f.codigo);
+  assert.deepEqual(await subir(), ['SN-NUEVO', 'SN-VIEJO']);
+  await como(U.carga, "update public.articulos set cargado_web = true where codigo = 'SN-VIEJO'");
+  assert.deepEqual(await subir(), ['SN-NUEVO']);
+
+  // Una variante que llega sola marca también a su artículo principal (la Planilla muestra la casilla del principal)
+  await db.exec(`insert into public.articulos (codigo, descripcion) values ('SV-PADRE', 'PADRE');
+                 insert into public.articulos (codigo, descripcion, tipo, padre_codigo) values ('SV-PADRE-ROJ', 'PADRE ROJO', 'VARIANTE', 'SV-PADRE')`);
+  await cargarRemito(remSO('0007-00000003', '2026-11-11', [['SV-PADRE-ROJ', 3]]));
+  assert.deepEqual(await como(U.consulta, "select codigo, llego from public.articulos where codigo like 'SV-PADRE%' order by codigo"),
+    [{ codigo: 'SV-PADRE', llego: true }, { codigo: 'SV-PADRE-ROJ', llego: true }]);
+  // Llegó sola, sin su principal en el remito: sale como su propia fila
+  assert.deepEqual((await como(U.consulta, "select codigo, estado from public.v_planilla where codigo like 'SV-PADRE%' order by codigo")),
+    [{ codigo: 'SV-PADRE-ROJ', estado: 'sin_orden' }]);
+
+  // Al asignarlo a una orden, la fila "sin orden" se va y queda la de la orden (sin repetirse)
+  await cargarOC({ ...oc('0007-00000100', '2026-11-11', [['SN-NUEVO', 10]]), cuit: cuitSO, proveedor: 'PROVEEDOR SIN ORDEN SA' });
+  const filasNuevo = () => como(U.consulta, "select orden, estado from public.v_planilla where codigo = 'SN-NUEVO' order by orden nulls last");
+  assert.deepEqual(await filasNuevo(), [{ orden: '0007-00000100', estado: 'pendiente' }], 'con una orden del mismo código sale solo por la orden');
+  const linea = (await como(U.carga, "select id from public.v_oc_lineas where orden = '0007-00000100'"))[0].id;
+  for (const s of await como(U.carga, "select remito_linea_id, sin_orden::float8 as n from public.v_sobrantes where codigo = 'SN-NUEVO'")) {
+    await como(U.carga, 'select public.asignar_a_orden($1, $2, $3)', [s.remito_linea_id, linea, s.n]);
+  }
+  assert.deepEqual(await filasNuevo(), [{ orden: '0007-00000100', estado: 'parcial' }]);
+
+  // El remito borrado no deja la fila "sin orden" (el artículo queda, con "Llegó" marcado)
+  const r = await cargarRemito(remSO('0007-00000004', '2026-11-12', [['SN-BORRAR', 1]]));
+  assert.equal((await como(U.consulta, "select count(*)::int as n from public.v_planilla where codigo = 'SN-BORRAR'"))[0].n, 1);
+  await como(U.carga, 'delete from public.remitos where id = $1', [r.remito_id]);
+  assert.equal((await como(U.consulta, "select count(*)::int as n from public.v_planilla where codigo = 'SN-BORRAR'"))[0].n, 0);
+});
+
+test('migración de lo que ya llegó sin orden: crea los artículos que faltaban y los marca', async () => {
+  // Como estaba antes: una línea de remito sin orden y sin artículo
+  await db.exec(`alter table public.remito_lineas disable trigger remito_lineas_articulo`);
+  const r = await cargarRemito({ ...remito('0008-00000001', '2026-11-01', [['MG-SUELTO', 2]]), cuit: '30444444440', proveedor: 'PROVEEDOR MIGRACION' });
+  await db.exec(`alter table public.remito_lineas enable trigger remito_lineas_articulo`);
+  assert.equal((await db.query("select count(*)::int as n from public.articulos where codigo = 'MG-SUELTO'")).rows[0].n, 0);
+  assert.equal(r.sin_orden.length, 1);
+
+  const sql = migraciones().find(m => m.includes('articulo_desde_remito'));
+  await db.exec(sql);
+  assert.deepEqual((await db.query("select llego, descripcion from public.articulos where codigo = 'MG-SUELTO'")).rows, [{ llego: true, descripcion: 'ART MG-SUELTO' }]);
+  assert.equal((await como(U.consulta, "select estado from public.v_planilla where codigo = 'MG-SUELTO'"))[0].estado, 'sin_orden');
+});

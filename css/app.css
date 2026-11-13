@@ -243,6 +243,8 @@ dialog.dlg[open]::backdrop { animation:fundido var(--t-lenta) var(--ease) both; 
 .estado.parcial::before { background:#d9922b; }
 .estado.completa::before { background:var(--verde); }
 .estado.cerrada::before, .estado.cancelada::before { background:var(--tenue); }
+.estado.sin_orden::before { background:var(--alerta); } /* llegó por remito sin orden de compra */
+.sin-orden-ref { color:var(--muted); }
 .tabla td.atrasado { color:var(--alerta); font-weight:600; }
 
 /* ---------- Cargar documentos ---------- */
