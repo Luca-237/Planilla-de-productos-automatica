@@ -690,3 +690,49 @@ test('migración de lo que ya llegó sin orden: crea los artículos que faltaban
   assert.deepEqual((await db.query("select llego, descripcion from public.articulos where codigo = 'MG-SUELTO'")).rows, [{ llego: true, descripcion: 'ART MG-SUELTO' }]);
   assert.equal((await como(U.consulta, "select estado from public.v_planilla where codigo = 'MG-SUELTO'"))[0].estado, 'sin_orden');
 });
+
+// ---------- CUIT inválido o ausente: los documentos se guardan igual ----------
+test('CUIT con otro largo: se guarda, y su remito (mismo CUIT mal cargado) cruza con la orden', async () => {
+  const mal = '2012345';
+  await cargarOC({ ...oc('0010-00000001', '2026-11-01', [['CI-1', 5]]), cuit: mal, proveedor: 'PROVEEDOR CUIT CORTO' });
+  assert.deepEqual(await como(U.admin, "select cuit, nombre from public.proveedores where cuit = $1", [mal]), [{ cuit: mal, nombre: 'PROVEEDOR CUIT CORTO' }]);
+  assert.equal((await como(U.consulta, "select count(*)::int as n from public.articulos where codigo = 'CI-1'"))[0].n, 1);
+  const rem = await cargarRemito({ ...remito('0010-00000002', '2026-11-02', [['CI-1', 5]]), cuit: mal, proveedor: 'PROVEEDOR CUIT CORTO' });
+  assert.deepEqual(rem.sin_orden, []);
+  assert.deepEqual((await estadoLineas('0010-00000001')).map(l => [l.codigo, l.recibido, l.estado]), [['CI-1', 5, 'completa']]);
+});
+
+test('CUIT con puntos, guiones o letras: se limpia y se guarda igual', async () => {
+  await cargarOC({ ...oc('0010-00000003', '2026-11-03', [['CI-2', 1]]), cuit: '30-12.345-X', proveedor: 'PROVEEDOR CUIT RARO' });
+  assert.equal((await como(U.admin, "select count(*)::int as n from public.proveedores where cuit = '3012345'"))[0].n, 1);
+});
+
+test('sin CUIT: el proveedor se identifica por el nombre, una orden y su remito van juntos', async () => {
+  for (const sinCuit of [null, '', '   ']) {
+    await cargarOC({ ...oc('0010-0000010' + [null, '', '   '].indexOf(sinCuit), '2026-11-04', [['SC-' + [null, '', '   '].indexOf(sinCuit), 3]]), cuit: sinCuit, proveedor: 'Proveedor Sin Cuit SRL' });
+  }
+  const provs = await como(U.admin, "select cuit, nombre from public.proveedores where public.clave_nombre(nombre) = public.clave_nombre('proveedor sin cuit srl')");
+  assert.equal(provs.length, 1, 'los tres documentos usan el mismo proveedor');
+  assert.equal(provs[0].cuit, null);
+  const rem = await cargarRemito({ ...remito('0010-00000020', '2026-11-05', [['SC-0', 3]]), cuit: null, proveedor: 'PROVEEDOR SIN CUIT S.R.L.' });
+  assert.deepEqual(rem.sin_orden, [], 'el remito sin CUIT encuentra la orden por el nombre');
+});
+
+test('sin CUIT y sin nombre: queda como "Proveedor sin identificar"', async () => {
+  await cargarOC({ ...oc('0010-00000030', '2026-11-06', [['SN-1', 1]]), cuit: null, proveedor: '' });
+  assert.equal((await como(U.admin, "select count(*)::int as n from public.proveedores where nombre = 'Proveedor sin identificar'"))[0].n, 1);
+});
+
+test('sin CUIT usa el proveedor que ya tiene CUIT con ese nombre; el CUIT correcto después completa al que no lo tenía', async () => {
+  await cargarOC({ ...oc('0010-00000040', '2026-11-07', [['CN-1', 2]]), cuit: '30777777779', proveedor: 'PROVEEDOR CON NOMBRE' });
+  await cargarRemito({ ...remito('0010-00000041', '2026-11-08', [['CN-1', 2]]), cuit: null, proveedor: 'proveedor con nombre' });
+  assert.equal((await como(U.admin, "select count(*)::int as n from public.proveedores where public.clave_nombre(nombre) = 'PROVEEDORCONNOMBRE'"))[0].n, 1);
+  // proveedor creado sin CUIT, que después llega con el CUIT correcto
+  await cargarOC({ ...oc('0010-00000042', '2026-11-09', [['CN-2', 1]]), cuit: null, proveedor: 'PROVEEDOR TARDIO' });
+  await cargarOC({ ...oc('0010-00000043', '2026-11-10', [['CN-3', 1]]), cuit: '30666666669', proveedor: 'Proveedor Tardio' });
+  assert.deepEqual(await como(U.admin, "select cuit from public.proveedores where public.clave_nombre(nombre) = 'PROVEEDORTARDIO'"), [{ cuit: '30666666669' }]);
+});
+
+test('un CUIT inválido no pisa los permisos: consulta sigue sin poder cargar', async () => {
+  await assert.rejects(cargarOC({ ...oc('0010-00000050', '2026-11-11', [['PP-1', 1]]), cuit: '123' }, true, U.consulta), /permiso|permission|row-level/i);
+});

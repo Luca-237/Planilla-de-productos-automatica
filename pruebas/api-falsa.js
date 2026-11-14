@@ -38,9 +38,20 @@
     return { codigo, fecha_alta_web: a.fecha_alta_web };
   }
 
-  function proveedor(cuit, nombre) {
-    let p = proveedores.find(x => x.cuit === cuit);
-    if (!p) { p = { id: nuevoId(), cuit, nombre: nombre || cuit, nombre_corto: "" }; proveedores.push(p); }
+  // Como la base: por CUIT (válido o no); sin CUIT, por nombre
+  const claveNombre = s => String(s || "").toUpperCase().replace(/[^A-Z0-9]+/g, "");
+  function proveedor(cuitCrudo, nombre) {
+    const cuit = String(cuitCrudo || "").replace(/\D/g, "");
+    let p;
+    if (cuit) {
+      p = proveedores.find(x => x.cuit === cuit);
+      if (!p && claveNombre(nombre)) { p = proveedores.find(x => !x.cuit && claveNombre(x.nombre) === claveNombre(nombre)); if (p) p.cuit = cuit; }
+      if (!p) { p = { id: nuevoId(), cuit, nombre: nombre || cuit, nombre_corto: "" }; proveedores.push(p); }
+      return p;
+    }
+    const k = claveNombre(nombre) || claveNombre("Proveedor sin identificar");
+    p = proveedores.find(x => claveNombre(x.nombre) === k);
+    if (!p) { p = { id: nuevoId(), cuit: null, nombre: (nombre || "").trim() || "Proveedor sin identificar", nombre_corto: "" }; proveedores.push(p); }
     return p;
   }
   // Como en las vistas: el nombre corto o, si no tiene, la razón social

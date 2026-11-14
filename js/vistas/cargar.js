@@ -14,7 +14,15 @@
   let sec = 0;
   // Proveedores ya cargados, para mostrar el nombre corto (Target, Bagcherry…) y pedirlo si falta
   let proveedores = [];
-  const proveedorDe = d => d && proveedores.find(p => p.cuit === d.cuit);
+  const soloDigitos = s => String(s || "").replace(/\D/g, "");
+  const claveNombre = s => String(s || "").toUpperCase().replace(/[^A-Z0-9]+/g, ""); // igual que clave_nombre de la base
+  const cuitValido = c => /^\d{11}$/.test(String(c || ""));
+  // El proveedor de un documento, como lo resuelve la base: por CUIT; sin CUIT (o si ese CUIT todavía no está), por nombre
+  const proveedorDe = d => {
+    if (!d) return null;
+    const c = soloDigitos(d.cuit), k = claveNombre(d.proveedor);
+    return (c && proveedores.find(p => p.cuit === c)) || (k && proveedores.find(p => (!c || !p.cuit) && claveNombre(p.nombre) === k)) || null;
+  };
   async function recargarProveedores() {
     try { proveedores = await R.api.proveedores.listar(); R.vistaProveedores.pintarContador(proveedores); }
     catch (e) { /* sin nombres cortos se muestra la razón social */ }
@@ -29,7 +37,7 @@
   }
 
   // Un documento es "el mismo" si coinciden tipo, proveedor y número
-  const claveDoc = d => (d ? [d.tipo, d.cuit || "", String(d.numero || "").trim()].join("|") : "");
+  const claveDoc = d => (d ? [d.tipo, soloDigitos(d.cuit) || "N:" + claveNombre(d.proveedor), String(d.numero || "").trim()].join("|") : "");
   const repetida = t => !!(t.doc && t.doc.numero && tarjetas.some(o => o !== t && o.estado !== "error" && o.doc && claveDoc(o.doc) === claveDoc(t.doc)));
   const RE_OC = /^\d{4}-\d{8}$/;
 
@@ -161,7 +169,7 @@
     const titulo = !d ? esc(t.archivo)
       : `${d.tipo === "orden_compra" ? "Orden de compra" : "Remito de ingreso"} ${esc(d.numero || "(sin número)")}`;
     const p = proveedorDe(d), corto = p && p.nombre_corto;
-    const sub = d ? `${corto ? `<strong>${esc(p.nombre_corto)}</strong> · ` : ""}${esc(d.proveedor || "Proveedor sin nombre")} · CUIT ${esc(d.cuit || "—")} · ${fmtFecha(d.fecha)} · ${esc(t.archivo)}` : "";
+    const sub = d ? `${corto ? `<strong>${esc(p.nombre_corto)}</strong> · ` : ""}${esc(d.proveedor || "Proveedor sin nombre")} · CUIT ${esc(d.cuit || "—")}${cuitValido(d.cuit) ? "" : ` <span class="texto-alerta" title="Se guarda igual: al proveedor se lo identifica por ${d.cuit ? "ese número" : "su nombre"}">(CUIT no válido)</span>`} · ${fmtFecha(d.fecha)} · ${esc(t.archivo)}` : "";
     const acciones = t.estado === "guardado"
       ? `<span class="estado completa">Guardado</span>${t.deshacerId ? ` <button type="button" class="link peligro" data-deshacer-carga="${t.id}">Deshacer carga</button>` : ""}`
       : `<button type="button" class="link" data-quitar="${t.id}">Descartar</button>

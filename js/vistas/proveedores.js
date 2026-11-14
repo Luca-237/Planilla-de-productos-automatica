@@ -50,7 +50,7 @@
         <th class="num">Órdenes</th><th>Última orden</th><th class="num">Falta llegar</th>${puede ? "<th></th>" : ""}</tr></thead>
       <tbody>${lista.map(({ p, ordenes: n, ultima, falta }) => `<tr class="${sinNombre(p) ? "sin-nombre" : ""}" data-id="${p.id}">
         <td>${sinNombre(p) ? `<span class="nombre-prov">${esc(p.nombre)}</span><small class="aviso">Sin nombre</small>` : `<span class="nombre-prov">${esc(p.nombre_corto)}</span>`}</td>
-        <td>${esc(p.nombre)}</td><td>${esc(p.cuit)}</td>
+        <td>${esc(p.nombre)}</td><td>${p.cuit ? esc(p.cuit) : `<small class="aviso">Sin CUIT</small>`}${p.cuit && !/^\d{11}$/.test(p.cuit) ? ` <small class="aviso" title="No tiene 11 dígitos: se cargó así desde Manager">CUIT no válido</small>` : ""}</td>
         <td class="num ${n ? "" : "cero"}">${fmtNum(n)}</td><td>${fmtFecha(ultima)}</td>
         <td class="num ${falta ? "" : "cero"}">${fmtNum(falta)}</td>
         ${puede ? `<td><div class="acciones-fila"><button type="button" class="btn-sec ${sinNombre(p) ? "primario" : ""}" data-renombrar="${p.id}">${sinNombre(p) ? "Ponerle nombre" : "Renombrar"}</button></div></td>` : ""}

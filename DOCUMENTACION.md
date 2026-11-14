@@ -213,7 +213,9 @@ El cruce lo hace la base en una sola operación. Un trigger (`controlar_recepcio
 ## Base de datos
 | Tabla / vista | Qué guarda |
 |---|---|
-| `proveedores` | CUIT (único) y nombre |
+| `proveedores` | CUIT (único, puede faltar o no ser válido) y nombre |
+
+> **CUIT inválido o ausente (14/11/2026):** una orden o un remito cuyo CUIT no tiene 11 dígitos, tiene signos o viene vacío **se guarda igual** (migración `20261114100000_cuit_invalido.sql`). Con dígitos, el proveedor se identifica por ese número tal cual (el mismo CUIT mal cargado en una orden y en su remito es el mismo proveedor); sin CUIT, por el nombre (se reusa el que ya existe, con o sin CUIT; si no trae nombre, "Proveedor sin identificar"). Si después llega un documento con el CUIT correcto del mismo nombre, el proveedor sin CUIT lo toma en vez de duplicarse. Cargar documentos avisa "CUIT no válido" en la tarjeta y Proveedores marca "Sin CUIT" o "CUIT no válido".
 | `articulos` | Un registro por código de Cindy + los datos de la web (antes columnas L en adelante de la planilla) |
 | `ordenes_compra`, `oc_lineas` | La OC de Manager; modalidad de facturación, cierre y cancelaciones |
 | `remitos`, `remito_lineas` | El remito de ingreso de Manager |

@@ -195,7 +195,9 @@
     else if (textos.has('REMITO DE INGRESO')) doc = leerRemitoDeIngreso(filas, avisos);
     else throw new Error('No es una orden de compra ni un remito de ingreso de Manager.');
     if (!doc.numero) avisos.push('No se encontró el número del comprobante.');
-    if (!doc.cuit) avisos.push('No se encontró el CUIT del proveedor.');
+    // El CUIT mal o sin cargar no impide guardar: el proveedor se identifica por ese número o, si no hay, por su nombre
+    if (!doc.cuit) avisos.push('No se encontró el CUIT del proveedor: se guarda igual y se identifica por el nombre.');
+    else if (!/^\d{11}$/.test(doc.cuit)) avisos.push(`El CUIT del proveedor (${doc.cuit}) no tiene 11 dígitos: se guarda igual y se identifica por ese número.`);
     if (!doc.lineas.length) avisos.push('El documento no tiene artículos.');
     doc.avisos = avisos;
     return doc;
