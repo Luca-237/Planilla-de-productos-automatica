@@ -11,7 +11,8 @@
   function pintar() {
     $("tabla-usuarios").innerHTML = usuarios.map(u => `
       <tr class="${u.activo ? "" : "inactivo"}" data-id="${esc(u.id)}">
-        <td>${esc(u.nombre || "(sin nombre)")}${u.soy_yo ? " <small>(vos)</small>" : ""}<small>Usuario: ${esc(aUsuario(u.email))}</small></td>
+        <td>${esc(u.nombre || "(sin nombre)")}${u.soy_yo ? " <small>(vos)</small>" : ""}<small>Usuario: ${esc(aUsuario(u.email))}</small>
+          ${u.login_propio ? `<span class="chip-login">Usuario de siempre</span>` : ""}${u.cuenta_cindy ? `<span class="chip-login">Cuenta Cindy</span>` : ""}</td>
         <td>
           <select data-accion="rol" ${u.soy_yo ? "disabled title=\"No podés cambiar tu propio rol\"" : ""}>
             ${ROLES.map(([v, t]) => `<option value="${v}" ${u.rol === v ? "selected" : ""}>${t}</option>`).join("")}
@@ -19,7 +20,9 @@
         </td>
         <td>${u.activo ? "Activo" : "Desactivado"}<small>Último ingreso: ${fechaHora(u.ultimo_ingreso)}</small></td>
         <td><div class="acciones-fila">
-          <button type="button" class="link" data-accion="password">Nueva contraseña</button>
+          ${u.login_propio === false ? "" : `<button type="button" class="link" data-accion="password">Nueva contraseña</button>`}
+          ${u.cuenta_cindy && u.login_propio && !u.soy_yo ? `<button type="button" class="link" data-accion="desvincular">Desvincular cuenta Cindy</button>` : ""}
+          ${u.cuenta_cindy && !u.login_propio && !u.soy_yo ? `<button type="button" class="link" data-accion="unir">Unir con usuario de siempre</button>` : ""}
           ${u.soy_yo ? "" : `<button type="button" class="link ${u.activo ? "peligro" : ""}" data-accion="${u.activo ? "desactivar" : "activar"}">${u.activo ? "Desactivar" : "Activar"}</button>`}
         </div></td>
       </tr>`).join("") || `<tr><td colspan="4">No hay usuarios.</td></tr>`;
@@ -80,6 +83,16 @@
         ejecutar(R.api.usuarios.desactivar(u.id), "Usuario desactivado.");
       } else if (b.dataset.accion === "activar") {
         ejecutar(R.api.usuarios.activar(u.id), "Usuario activado.");
+      } else if (b.dataset.accion === "desvincular") {
+        if (!confirm(`${u.nombre || aUsuario(u.email)} va a seguir entrando con su usuario de siempre, pero no con la cuenta Cindy. ¿Continuar?`)) return;
+        ejecutar(R.api.usuarios.desvincularClerk(u.id), "Cuenta Cindy desvinculada.");
+      } else if (b.dataset.accion === "unir") {
+        const destino = prompt(`La cuenta Cindy de ${u.nombre || aUsuario(u.email)} pasa al usuario que escribas (con su rol y estado). El registro suelto se borra.\n\nUsuario (ej: antonella):`);
+        if (!destino) return;
+        const buscado = destino.trim().toLowerCase();
+        const d = usuarios.find(x => x.login_propio && !x.cuenta_cindy && (aUsuario(x.email) === buscado || String(x.email || "").toLowerCase() === buscado));
+        if (!d) return toast(`No hay un usuario "${destino}" sin cuenta Cindy.`, "error", 6000);
+        ejecutar(R.api.usuarios.unirCuentas(u.id, d.id), "Cuentas unidas.");
       }
     });
   }

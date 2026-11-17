@@ -156,14 +156,19 @@ if (D && D.serve) {
       if (!token || !tiendaId) return respuesta({ error: "Faltan los secretos TIENDANUBE_TOKEN y TIENDANUBE_STORE_ID en esta función" }, 500);
       const admin = createClient(url, service, { auth: { persistSession: false } });
 
-      // ¿Quién llama? Cualquier usuario activo
-      const jwt = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
-      if (!jwt) return respuesta({ error: "Falta iniciar sesión" }, 401);
-      const { data: { user }, error: errSesion } = await admin.auth.getUser(jwt);
-      if (errSesion || !user) return respuesta({ error: "Sesión inválida o vencida. Volvé a ingresar." }, 401);
-      const { data: yo, error: errPerfil } = await admin.from("perfiles").select("activo").eq("id", user.id).maybeSingle();
-      if (errPerfil) return respuesta({ error: "La función no pudo leer los perfiles: " + errPerfil.message }, 500);
-      if (!yo || !yo.activo) return respuesta({ error: "No tenés permiso para buscar productos" }, 403);
+      // ¿Quién llama? Cualquier usuario activo, con el login propio o con la cuenta Cindy (Clerk):
+      // la base valida el token y mi_perfil() devuelve su perfil.
+      const autorizacion = req.headers.get("Authorization") ?? "";
+      if (!/^Bearer\s+\S+/.test(autorizacion)) return respuesta({ error: "Falta iniciar sesión" }, 401);
+      const anon = D.env.get("SUPABASE_ANON_KEY") || JSON.parse(D.env.get("SUPABASE_PUBLISHABLE_KEYS") ?? "{}").default;
+      const comoUsuario = createClient(url, anon, {
+        global: { headers: { Authorization: autorizacion } },
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      const { data: filas, error: errSesion } = await comoUsuario.rpc("mi_perfil");
+      const yo = Array.isArray(filas) ? filas[0] : null;
+      if (errSesion || !yo) return respuesta({ error: "Sesión inválida o vencida. Volvé a ingresar." }, 401);
+      if (!yo.activo) return respuesta({ error: "No tenés permiso para buscar productos" }, 403);
 
       const body = await req.json().catch(() => ({}));
       const q = String(body.q ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_LETRAS);

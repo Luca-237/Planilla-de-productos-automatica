@@ -296,15 +296,19 @@ if (D && D.serve) {
       const ivaTN = Number(D.env.get("TIENDANUBE_IVA")); // opcional; por defecto 1,21
       const tn: ConfigTN | null = tnToken && tnTienda ? { token: tnToken, tiendaId: tnTienda, iva: ivaTN > 0 ? ivaTN : IVA_TN } : null;
 
-      // ¿Quién llama? Admin o carga, activo
-      const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
-      if (!token) return respuesta({ error: "Falta iniciar sesión" }, 401);
-      const { data: { user }, error: errSesion } = await admin.auth.getUser(token);
-      if (errSesion || !user) return respuesta({ error: "Sesión inválida o vencida. Volvé a ingresar." }, 401);
-      const { data: yo, error: errPerfil } = await admin.from("perfiles").select("rol, activo").eq("id", user.id).maybeSingle();
-      // Un error acá es de la base (ej. permisos de la clave de servicio), no del usuario: se muestra tal cual
-      if (errPerfil) return respuesta({ error: "La función no pudo leer los perfiles: " + errPerfil.message }, 500);
-      if (!yo || !yo.activo || !["admin", "carga"].includes(yo.rol)) return respuesta({ error: "No tenés permiso para revisar en la web" }, 403);
+      // ¿Quién llama? Admin o carga, activo; con el login propio o con la cuenta Cindy (Clerk):
+      // la base valida el token y mi_perfil() devuelve su perfil.
+      const autorizacion = req.headers.get("Authorization") ?? "";
+      if (!/^Bearer\s+\S+/.test(autorizacion)) return respuesta({ error: "Falta iniciar sesión" }, 401);
+      const anon = D.env.get("SUPABASE_ANON_KEY") || JSON.parse(D.env.get("SUPABASE_PUBLISHABLE_KEYS") ?? "{}").default;
+      const comoUsuario = createClient(url, anon, {
+        global: { headers: { Authorization: autorizacion } },
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      const { data: filas, error: errSesion } = await comoUsuario.rpc("mi_perfil");
+      const yo = Array.isArray(filas) ? filas[0] : null;
+      if (errSesion || !yo) return respuesta({ error: "Sesión inválida o vencida. Volvé a ingresar." }, 401);
+      if (!yo.activo || !["admin", "carga"].includes(yo.rol)) return respuesta({ error: "No tenés permiso para revisar en la web" }, 403);
 
       const body = await req.json().catch(() => ({}));
       const codigos = [...new Set((Array.isArray(body.codigos) ? body.codigos : []).map((c: unknown) => String(c ?? "").trim()))]

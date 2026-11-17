@@ -201,7 +201,7 @@
     configurado: () => true,
     iniciar: () => {},
     auth: {
-      ingresar: async () => {}, salir: async () => {}, sesion: async () => ({ user: { id: perfil.id } }),
+      ingresar: async () => {}, salir: async () => {}, sesion: async () => ({ user: { id: perfil.id } }), via: () => "propio",
       alCambiar: () => {}, miPerfil: () => espera(perfil),
     },
     documentos: {

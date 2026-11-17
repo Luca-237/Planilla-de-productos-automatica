@@ -13,3 +13,7 @@ verify_jwt = false
 # Backup diario: la función se protege con su propio token (BACKUP_TOKEN), no con una sesión de usuario.
 [functions.backup-datos]
 verify_jwt = false
+
+# Misma razón: la función verifica la sesión (mi_perfil() con el token, sirve también para la cuenta Cindy).
+[functions.buscar-productos]
+verify_jwt = false

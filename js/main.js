@@ -57,18 +57,29 @@
     A.mostrar("pantalla-carga");
     let perfil;
     try { perfil = await R.api.auth.miPerfil(); }
-    catch (e) { A.mostrar("pantalla-login"); return A.errorLogin(e.message); }
+    catch (e) { A.mostrarCindy(); A.mostrar("pantalla-login"); return A.errorLogin(e.message); }
 
+    const cindy = R.api.auth.via && R.api.auth.via() === "clerk";
     if (!perfil || !perfil.activo) {
-      await R.api.auth.salir();
+      // Cuenta Cindy sin habilitar acá pero con sesión del login propio: usar esa
+      if (cindy && await R.api.auth.sesion({ ignorarClerk: true })) return entrar();
+      // La cuenta Cindy no se cierra: le sirve en las otras apps
+      if (!cindy) await R.api.auth.salir();
+      A.mostrarCindy();
       A.mostrar("pantalla-login");
-      return A.errorLogin("Tu usuario no está habilitado. Hablá con un admin.");
+      return A.errorLogin(cindy
+        ? "Tu cuenta Cindy todavía no está habilitada acá. Pedile a un admin que la habilite, o entrá con tu usuario de siempre."
+        : "Tu usuario no está habilitado. Hablá con un admin.");
     }
     R.estado.perfil = perfil;
     A.mostrarUsuario(perfil);
     A.mostrar("app");
     ir();
     R.vistaProveedores.actualizarContador(); // cuántos proveedores faltan nombrar (en el menú)
+  }
+
+  async function entrarConCindy() {
+    if (await R.api.auth.sesion()) await entrar();
   }
 
   function salir() {
@@ -89,7 +100,7 @@
 
     R.util.iniciarDialogos();
     R.util.iniciarAyudas();
-    A.iniciar({ alIngresar: entrar, alSalir: salir });
+    A.iniciar({ alIngresar: entrar, alIngresarCindy: entrarConCindy, alSalir: salir });
     // El texto de cada opción del menú va en su propio <span> para que, con el menú recogido, queden solo los iconos
     document.querySelectorAll(".lateral a").forEach(l => {
       const texto = [...l.childNodes].filter(n => n.nodeType === 3 && n.textContent.trim());
@@ -136,8 +147,20 @@
     });
 
     // Si la sesión se cierra o vence (en esta pestaña o en otra), volver al login
+    // Cuenta Cindy: si no está configurada o no carga, sigue solo el login propio
+    if (window.CuentaCindy) await window.CuentaCindy.cargar((window.COMPRAS_CONFIG || {}).clerkPublishableKey);
+    A.mostrarCindy();
+
     R.api.auth.alCambiar(evento => {
-      if (evento === "SIGNED_OUT") { salir(); A.mostrar("pantalla-login"); }
+      if (evento === "SIGNED_OUT" && (!R.api.auth.via || R.api.auth.via() !== "clerk")) { salir(); A.mostrar("pantalla-login"); }
+    });
+    if (window.CuentaCindy) window.CuentaCindy.alCambiar(async ({ session }) => {
+      A.mostrarCindy();
+      if (R.api.auth.via && R.api.auth.via() === "clerk" && !session && R.estado.perfil) { // se cerró desde otra app
+        await R.api.cache.vaciar();
+        salir();
+        A.mostrar("pantalla-login");
+      }
     });
 
     if (await R.api.auth.sesion()) await entrar();

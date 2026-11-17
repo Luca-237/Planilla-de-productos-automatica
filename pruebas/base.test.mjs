@@ -39,6 +39,14 @@ before(async () => {
     create function auth.uid() returns uuid language sql stable
       as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
     grant usage on schema auth to anon, authenticated;
+    -- Como en Supabase: auth.jwt() con los datos del token (PostgREST llena request.jwt.claims)
+    create function auth.jwt() returns jsonb language sql stable as $$
+      select coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb, '{}'::jsonb)
+        || case when nullif(current_setting('request.jwt.claim.sub', true), '') is not null
+                then jsonb_build_object('sub', current_setting('request.jwt.claim.sub', true), 'iss', 'https://x.supabase.co/auth/v1')
+                else '{}'::jsonb end $$;
+    grant execute on function auth.jwt() to anon, authenticated;
+    grant execute on function auth.uid() to anon, authenticated;
   `);
   for (const sql of migraciones()) await db.exec(sql);
   // Sin grants extra: el proyecto se crea con "Automatically expose new tables" apagado,
@@ -735,4 +743,51 @@ test('sin CUIT usa el proveedor que ya tiene CUIT con ese nombre; el CUIT correc
 
 test('un CUIT inválido no pisa los permisos: consulta sigue sin poder cargar', async () => {
   await assert.rejects(cargarOC({ ...oc('0010-00000050', '2026-11-11', [['PP-1', 1]]), cuit: '123' }, true, U.consulta), /permiso|permission|row-level/i);
+});
+
+// ---------- Cuenta Cindy (Clerk) junto al login propio ----------
+// Token de Clerk: sub "user_...", sin uuid; auth.uid() no sirve y se usa mi_perfil_id()
+async function comoClerk(sub, sql, params = [], extra = {}) {
+  return db.transaction(async tx => {
+    await tx.exec('set local role authenticated');
+    await tx.query("select set_config('request.jwt.claims', $1, true)",
+      [JSON.stringify({ sub, iss: 'https://nice-arachnid-8864.clerk.accounts.dev', role: 'authenticated', ...extra })]);
+    return (await tx.query(sql, params)).rows;
+  });
+}
+
+test('cuenta Cindy nueva: entra como consulta desactivada y no ve nada', async () => {
+  const [p] = await comoClerk('user_NUEVA', 'select * from public.mi_perfil()', [], { username: 'dana', nombre: 'Dana' });
+  assert.equal(p.rol, 'consulta'); assert.equal(p.activo, false); assert.equal(p.nombre, 'Dana'); assert.equal(p.via, 'clerk');
+  assert.equal((await comoClerk('user_NUEVA', 'select count(*)::int n from public.ordenes_compra'))[0].n, 0);
+  await assert.rejects(comoClerk('user_NUEVA', "insert into public.preferencias (columnas_ocultas) values ('{a}')"), /row-level|permission/i);
+});
+
+test('cuenta Cindy con el usuario de Compras se une a su perfil y carga como ese usuario', async () => {
+  const [p] = await comoClerk('user_CARGA', 'select * from public.mi_perfil()', [], { usuario: 'carga@prueba', username: 'carga' });
+  assert.equal(p.id, U.carga); assert.equal(p.rol, 'carga'); assert.equal(p.tiene_login_propio, true);
+  const r = (await comoClerk('user_CARGA', 'select public.cargar_orden_compra($1, true) as r', [oc('0010-00000900', '2026-11-17', [['CK-1', 2]])]))[0].r;
+  assert.ok(r);
+  const [o] = (await db.query("select cargado_por from public.ordenes_compra where numero = '0010-00000900'")).rows;
+  assert.equal(o.cargado_por, U.carga);
+  // Preferencias: el valor por defecto toma el perfil, no el sub de Clerk
+  await comoClerk('user_CARGA', "insert into public.preferencias (columnas_ocultas) values ('{x}') on conflict (usuario_id) do update set columnas_ocultas = excluded.columnas_ocultas");
+  assert.deepEqual((await comoClerk('user_CARGA', 'select columnas_ocultas from public.preferencias'))[0].columnas_ocultas, ['x']);
+  // Y puede deshacer su carga (política ordenes_delete con cargado_por)
+  assert.equal((await comoClerk('user_CARGA', "delete from public.ordenes_compra where numero = '0010-00000900' returning id")).length, 1);
+});
+
+test('cuenta solo Cindy habilitada como carga: lo que carga queda a su nombre', async () => {
+  await db.query("update public.perfiles set rol = 'carga', activo = true where clerk_id = 'user_NUEVA'");
+  const [yo] = await comoClerk('user_NUEVA', 'select * from public.mi_perfil()');
+  await comoClerk('user_NUEVA', 'select public.cargar_orden_compra($1, true)', [oc('0010-00000901', '2026-11-17', [['CK-2', 1]])]);
+  const [o] = (await db.query("select cargado_por from public.ordenes_compra where numero = '0010-00000901'")).rows;
+  assert.equal(o.cargado_por, yo.id);
+});
+
+test('el login propio sigue igual y restaurar_tabla busca usuarios en perfiles', async () => {
+  const [p] = await como(U.admin, 'select * from public.mi_perfil()');
+  assert.equal(p.id, U.admin); assert.equal(p.via, 'propio');
+  const def = (await db.query("select pg_get_functiondef('public.restaurar_tabla(text, jsonb)'::regprocedure) d")).rows[0].d;
+  assert.ok(!/auth\.users/.test(def) && /public\.perfiles u/.test(def));
 });

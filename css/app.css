@@ -553,3 +553,14 @@ a.web-chip:hover { text-decoration:underline; }
 .interruptor input:checked + .interruptor-pista { background:var(--verde); }
 .interruptor input:checked + .interruptor-pista::after { transform:translateX(16px); }
 .interruptor input:focus-visible + .interruptor-pista { outline:2px solid var(--verde); outline-offset:2px; }
+
+/* ---------- Cuenta Cindy (Clerk) junto al login propio ---------- */
+.login-cindy .btn { width:100%; margin-top:4px; }
+.login-cindy .hint { text-align:center; }
+.separador { display:flex; align-items:center; gap:10px; margin:18px 0 4px; color:var(--muted); font-size:12px; }
+.separador::before, .separador::after { content:""; flex:1; border-top:1px solid var(--linea-fuerte); }
+.con-cindy #login-btn { background:var(--blanco); color:var(--negro); border:1px solid var(--linea-fuerte); box-shadow:none; }
+.salir-cindy { display:block; margin-top:10px; }
+.salir-cindy[hidden], .via[hidden] { display:none; }
+.via { display:inline-block; margin-left:6px; padding:2px 7px; border:1px solid var(--linea-fuerte); border-radius:999px; font-size:10.5px; color:var(--muted); }
+.chip-login { display:inline-block; margin:3px 4px 0 0; padding:1px 7px; border:1px solid var(--linea-fuerte); border-radius:999px; font-size:10.5px; color:var(--muted); font-weight:400; }

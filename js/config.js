@@ -23,4 +23,7 @@ window.COMPRAS_CONFIG = {
   // Búsqueda de un artículo en la web de Cindy (botón junto a la descripción). {codigo} se reemplaza solo.
   // Cuando la tienda pase a Tiendanube: https://cindymayorista2.mitiendanube.com/search/?q={codigo}
   urlBusquedaWeb: "https://www.cindymayorista.com.ar/resultado-busqueda.htm?keywords={codigo}",
+  // Cuenta Cindy (Clerk). Clave publicable (pk_live_... o pk_test_...), no es secreta.
+  // Vacía = solo el login propio.
+  clerkPublishableKey: "pk_test_bmljZS1hcmFjaG5pZC04ODY0LmNsZXJrLmFjY291bnRzLmRldiQ",
 };

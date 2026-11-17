@@ -19,11 +19,32 @@
     // Lo que solo ve quien corresponde (la base igual lo vuelve a verificar)
     document.querySelectorAll("[data-solo-admin]").forEach(el => { el.hidden = !esAdmin; });
     document.querySelectorAll("[data-puede-cargar]").forEach(el => { el.hidden = !(esAdmin || perfil.rol === "carga"); });
+    $("usuario-via").hidden = perfil.via !== "clerk";
+    $("salir").title = perfil.via === "clerk" ? "Cierra la cuenta Cindy en todas las apps" : "";
+  }
+
+  // Muestra u oculta el botón de cuenta Cindy según si Clerk cargó
+  const CC = () => window.CuentaCindy;
+  function mostrarCindy() {
+    const hay = !!(CC() && CC().hayClerk());
+    $("login-cindy").hidden = !hay;
+    $("form-login").classList.toggle("con-cindy", hay);
+    $("salir-cindy").hidden = !(hay && CC().conSesion());
   }
 
   function errorLogin(mensaje) { $("login-error").textContent = mensaje || ""; }
 
-  function iniciar({ alIngresar, alSalir }) {
+  function iniciar({ alIngresar, alIngresarCindy, alSalir }) {
+    $("login-clerk").addEventListener("click", () => {
+      errorLogin("");
+      if (CC().conSesion()) alIngresarCindy(); // ya hay sesión (por ej. de otra app)
+      else CC().abrirIngreso();
+    });
+    $("salir-cindy").addEventListener("click", async () => {
+      await CC().salir();
+      errorLogin("");
+      mostrarCindy();
+    });
     $("form-login").addEventListener("submit", async e => {
       e.preventDefault();
       errorLogin("");
@@ -37,11 +58,14 @@
       } finally { $("login-btn").disabled = false; }
     });
     $("salir").addEventListener("click", async () => {
-      await R.api.auth.salir();
+      const cindy = R.api.auth.via && R.api.auth.via() === "clerk";
+      if (cindy && !confirm("Se va a cerrar tu cuenta Cindy en todas las apps (Panel, rótulos, RRHH y las demás). ¿Continuar?")) return;
+      await R.api.auth.salir({ cuentaCindy: cindy });
       alSalir();
+      mostrarCindy();
       mostrar("pantalla-login");
     });
   }
 
-  R.vistaAcceso = { iniciar, mostrar, mostrarUsuario, errorLogin };
+  R.vistaAcceso = { iniciar, mostrar, mostrarUsuario, errorLogin, mostrarCindy };
 })(window.COMPRAS);
